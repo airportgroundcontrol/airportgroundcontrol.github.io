@@ -7,11 +7,7 @@ import {
   orderedFlights,
   requestsAction,
 } from "../src/sim.js";
-const data = JSON.parse(
-  fs.readFileSync(
-    new URL("../data/airports/egph/geometry.json", import.meta.url),
-  ),
-);
+import { defaultAirport as data } from "../src/airports/catalog.js";
 function setup() {
   const sim = new GroundSim(data);
   sim.nextArrival = Infinity;

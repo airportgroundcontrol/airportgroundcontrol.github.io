@@ -169,8 +169,28 @@ try {
   );
   assert.ok(
     (await broken.locator("#toast").textContent()).includes(
-      "could not be restored",
+      "Previous save preserved",
     ),
+  );
+
+  await broken.evaluate(() => {
+    groundControl.session.dispatch(1, "pushback");
+    groundControl.session.save();
+  });
+  assert.equal(
+    await broken.evaluate((key) => localStorage.getItem(key), key),
+    "{invalid",
+  );
+  await broken
+    .getByRole("button", { name: "Restart simulation", exact: true })
+    .click();
+  await broken.locator("#confirm-restart").click();
+  assert.equal(
+    await broken.evaluate(
+      (key) => JSON.parse(localStorage.getItem(key)).version,
+      key,
+    ),
+    1,
   );
 
   const blockedContext = await browser.newContext();

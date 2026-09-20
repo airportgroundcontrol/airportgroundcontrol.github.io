@@ -4,10 +4,16 @@ const read = (name) =>
   fs.readFileSync(new URL("../" + name, import.meta.url), "utf8");
 for (const name of ["index.html", "style.css"])
   assert.equal(read("dist/" + name), read("web/" + name));
-assert.equal(
-  read("dist/data/egph.json"),
-  read("data/airports/egph/geometry.json"),
-);
+for (const entry of fs.readdirSync(
+  new URL("../data/airports/", import.meta.url),
+  { withFileTypes: true },
+)) {
+  if (entry.isDirectory())
+    assert.equal(
+      read(`dist/data/${entry.name}.json`),
+      read(`data/airports/${entry.name}/geometry.json`),
+    );
+}
 const offline = read("Ground Control.html");
 assert.ok(offline.includes(`<style>${read("web/style.css")}</style>`));
 assert.ok(

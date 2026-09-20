@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
@@ -9,8 +9,11 @@ const files = new Map([
   ["/index.html", ["index.html", "text/html"]],
   ["/style.css", ["style.css", "text/css"]],
   ["/app.js", ["app.js", "text/javascript"]],
-  ["/data/egph.json", ["data/egph.json", "application/json"]],
 ]);
+for (const name of await readdir(new URL("../dist/data/", import.meta.url))) {
+  if (/^[a-z0-9_-]+\.json$/i.test(name))
+    files.set("/data/" + name, ["data/" + name, "application/json"]);
+}
 const server = createServer(async (request, response) => {
   const entry = files.get(new URL(request.url, "http://localhost").pathname);
   if (!entry) {
@@ -42,7 +45,12 @@ try {
     process.env.BASE_URL || `http://127.0.0.1:${server.address().port}`;
   const suites = process.argv.includes("--benchmark")
     ? ["benchmark-browser.mjs"]
-    : ["browser.mjs", "traffic-browser.mjs", "persistence-browser.mjs"];
+    : [
+        "browser.mjs",
+        "traffic-browser.mjs",
+        "persistence-browser.mjs",
+        "airports-browser.mjs",
+      ];
   for (const suite of suites) {
     console.log(`\nRunning ${suite} at ${baseURL}`);
     await new Promise((resolve, reject) => {

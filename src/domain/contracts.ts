@@ -23,14 +23,12 @@ export interface AirportNode extends RoutePoint {
   hold: boolean;
   ref: string;
 }
-export interface AirportDefinition {
+export interface AirportGeometry {
   id: AirportId;
   iata: string;
   name: string;
   country: string;
   center: [number, number];
-  runway: string;
-  runwayLength: number;
   source: { name: string; url: string; downloaded: string; license: string };
   features: {
     id: string;
@@ -50,6 +48,45 @@ export interface AirportDefinition {
     path: NodeId[];
     heading: number;
   }[];
+}
+export interface RunwayConfiguration {
+  endId: RunwayEndId;
+  departureHold: NodeId;
+  departureEntry: NodeId;
+  arrivalExit: NodeId;
+  vacatePath: NodeId[];
+}
+export interface PhysicalRunway {
+  id: RunwayId;
+  label: string;
+  protectedHalfWidth: number;
+  releaseDistance: number;
+  ends: { id: RunwayEndId; label: string; position: Point }[];
+  configurations: RunwayConfiguration[];
+}
+export interface AirportOperations {
+  version: 1;
+  groundName: string;
+  frequency: string;
+  runways: PhysicalRunway[];
+  holdingPoints: NodeId[];
+  map: {
+    bounds: { minX: number; maxX: number; minY: number; maxY: number };
+    labels: (Point & { text: string; minZoom: number; color?: string })[];
+    mediumZoomStands: StandId[];
+  };
+}
+export interface AirportDefinition extends AirportGeometry {
+  operations: AirportOperations;
+  scenario: ScenarioDefinition;
+  activeRunway: PhysicalRunway;
+  configuration: RunwayConfiguration;
+  compatibility: {
+    legacyV1: { revision: string; configurationRevision: string };
+  } | null;
+  runway: string;
+  oppositeRunway: string;
+  departureHoldLabel: string;
   runwayStart: Point;
   runwayEnd: Point;
   departureEntry: NodeId;
@@ -57,16 +94,32 @@ export interface AirportDefinition {
   arrivalExit: NodeId;
 }
 
-// Describes today's hard-coded scenario; wiring it into the engine is Phase 3.
 export interface ScenarioDefinition {
-  airport: AirportId;
+  id: string;
+  version: number;
   activeRunwayEnd: RunwayEndId;
   initialDepartures: { stand: StandId; call: string }[];
-  initialArrival: string;
-  arrivalInterval: number;
-  departureInterval: number;
+  initialArrivals: string[];
+  departureStands: StandId[];
+  traffic: {
+    arrivalInterval: number;
+    departureInterval: number;
+    maxApproaches: number;
+    maxDepartures: number;
+    maxActive: number;
+    arrivalSpacing: number;
+    queueSpacing: number;
+    departurePrefixes: string[];
+    arrivalPrefixes: string[];
+    departureTypes: string[];
+    arrivalType: string;
+  };
   turnaroundSeconds: number;
-  activeAircraftLimit: number;
+  goAroundSeconds: number;
+  cleanupSeconds: number;
+  scoring: { movement: number; goAround: number; conflict: number };
+  clockStartSeconds: number;
+  weather: { conditions: string; wind: string };
 }
 
 export interface HoldLimit {
@@ -191,6 +244,9 @@ export type Command = { aircraftId: AircraftId } & (
   | { action: "follow" | "giveway"; payload: { targetId: AircraftId } }
 );
 export type CommandResult = { ok: true } | { ok: false; message: string };
+export type SessionCommandResult = CommandResult & {
+  events: SimulationEvent[];
+};
 export interface UiState {
   selected: AircraftId | null;
   speed: 1 | 4 | 8;
@@ -208,6 +264,10 @@ export interface SaveEnvelope {
   version: 1;
   airport: AirportId;
   revision: string;
+  // Absent only in archived v1 saves admitted by a pinned compatibility entry.
+  configurationRevision?: string;
+  scenario?: { id: string; version: number };
+  operationsVersion?: number;
   savedAt: number;
   simulation: SavedSimulationV1;
   ui: Partial<UiState>;

@@ -72,7 +72,10 @@ export function groupedFlights(planes) {
 }
 export class GroundSim {
   constructor(data) {
+    if (!data.operations || !data.scenario)
+      throw new Error("A validated airport package is required.");
     this.data = data;
+    this.scenario = data.scenario;
     this.nodes = new Map(data.nodes.map((n) => [n.id, n]));
     this.stands = new Map(data.stands.map((s) => [s.id, s]));
     this.graph = createGraph();
@@ -89,14 +92,17 @@ export class GroundSim {
     this.logs = [];
     this.nextId = 1;
     this.runwayOwner = null;
-    this.nextArrival = 210;
-    this.nextDeparture = 260;
-    this.nextCleanup = 60;
+    this.nextArrival = this.scenario.traffic.arrivalInterval;
+    this.nextDeparture = this.scenario.traffic.departureInterval;
+    this.nextCleanup = this.scenario.cleanupSeconds;
     this.conflictPairs = new Set();
-    for (const [i, stand] of ["3", "8", "20"].entries())
-      this.spawnDeparture(stand, ["BAW1439", "EZY326", "RYR6624"][i]);
-    this.spawnArrival("KLM927");
-    this.log("Edinburgh Ground. Runway 24 in use.", "system");
+    for (const { stand, call } of this.scenario.initialDepartures)
+      this.spawnDeparture(stand, call);
+    for (const call of this.scenario.initialArrivals) this.spawnArrival(call);
+    this.log(
+      `${this.data.operations.groundName}. Runway ${this.data.runway} in use.`,
+      "system",
+    );
   }
   log(text, type = "info") {
     this.logs.unshift({ time: this.time, text, type });
@@ -119,11 +125,13 @@ export class GroundSim {
       return;
     const n = this.nodes.get(s.node);
     const id = this.nextId++;
-    const calls = ["BAW", "EZY", "RYR", "LOG", "SAS"];
+    const calls = this.scenario.traffic.departurePrefixes;
     this.planes.push({
       id,
       call: call || this.callsign(calls[(id - 1) % calls.length], id),
-      type: id % 3 === 0 ? "B738" : "A320",
+      type: this.scenario.traffic.departureTypes[
+        (id - 1) % this.scenario.traffic.departureTypes.length
+      ],
       state: "gate",
       x: n.x,
       y: n.y,
@@ -145,12 +153,20 @@ export class GroundSim {
     const length = distance(start, end);
     const angle = Math.atan2(end.y - start.y, end.x - start.x);
     const spacing =
-      430 + this.planes.filter((p) => p.state === "approach").length * 220;
+      this.scenario.traffic.arrivalSpacing +
+      this.planes.filter((p) => p.state === "approach").length *
+        this.scenario.traffic.queueSpacing;
     this.planes.push({
       id,
       call:
-        call || this.callsign(["AFR", "EZY", "BAW", "KLM"][(id - 1) % 4], id),
-      type: "A320",
+        call ||
+        this.callsign(
+          this.scenario.traffic.arrivalPrefixes[
+            (id - 1) % this.scenario.traffic.arrivalPrefixes.length
+          ],
+          id,
+        ),
+      type: this.scenario.traffic.arrivalType,
       state: "approach",
       x: start.x - ((end.x - start.x) / length) * spacing,
       y: start.y - ((end.y - start.y) / length) * spacing,
@@ -164,7 +180,9 @@ export class GroundSim {
       held: false,
       blocked: false,
     });
-    this.log(`${this.planes.at(-1).call}, inbound runway 24. Request landing.`);
+    this.log(
+      `${this.planes.at(-1).call}, inbound runway ${this.data.runway}. Request landing.`,
+    );
   }
   runwayDistance(n) {
     const a = this.data.runwayStart,
@@ -192,7 +210,10 @@ export class GroundSim {
           return true;
         return (
           !allowRunway &&
-          (this.runwayDistance(a.data) < 30 || this.runwayDistance(b.data) < 30)
+          (this.runwayDistance(a.data) <
+            this.data.activeRunway.protectedHalfWidth ||
+            this.runwayDistance(b.data) <
+              this.data.activeRunway.protectedHalfWidth)
         );
       },
     });
@@ -237,8 +258,8 @@ export class GroundSim {
     p.wait = 0;
   }
   holdingPoints() {
-    return this.data.nodes
-      .filter((n) => n.hold && n.ref && this.runwayDistance(n) >= 30)
+    return this.data.operations.holdingPoints
+      .map((id) => this.nodes.get(id))
       .sort((a, b) => a.ref.localeCompare(b.ref, undefined, { numeric: true }));
   }
   edgeRef(a, b) {
@@ -253,7 +274,11 @@ export class GroundSim {
     for (let i = 0; i < p.route.length; i++) {
       const n = p.route[i];
       along += distance(previous, n);
-      if (n.hold && n.ref && along > 5)
+      if (
+        this.data.operations.holdingPoints.includes(n.id) &&
+        n.ref &&
+        along > 5
+      )
         options.push({
           id: "point:" + n.id,
           label: n.ref,
@@ -434,7 +459,7 @@ export class GroundSim {
       p.destination = target;
       p.clearance = this.routeNames(points).join(" - ");
       this.log(
-        `${p.call}, taxi ${holdingPoint ? "holding point " + p.holdLabel : arriving ? "stand " + stand : "holding point D1, runway 24"} via ${p.clearance || "apron"}.`,
+        `${p.call}, taxi ${holdingPoint ? "holding point " + p.holdLabel : arriving ? "stand " + stand : "holding point " + this.data.departureHoldLabel + ", runway " + this.data.runway} via ${p.clearance || "apron"}.`,
       );
       return { ok: true };
     }
@@ -444,18 +469,20 @@ export class GroundSim {
         p.node !== this.data.departureHold ||
         p.direction !== "departure"
       )
-        return reject("Taxi to holding point D1 first.");
+        return reject(
+          `Taxi to holding point ${this.data.departureHoldLabel} first.`,
+        );
       if (this.runwayOwner) return reject("Runway occupied. Hold short.");
       const points = this.path(p.node, this.data.departureEntry, true);
       if (!points.length) return reject("Runway entry unavailable.");
       this.runwayOwner = p.id;
       this.setRoute(p, points, "lineup", 6);
-      this.log(`${p.call}, line up and wait runway 24.`);
+      this.log(`${p.call}, line up and wait runway ${this.data.runway}.`);
       return { ok: true };
     }
     if (action === "takeoff") {
       if (p.state !== "linedup" || this.runwayOwner !== p.id)
-        return reject("Line up on runway 24 first.");
+        return reject(`Line up on runway ${this.data.runway} first.`);
       const end = this.data.runwayEnd;
       this.setRoute(
         p,
@@ -469,7 +496,7 @@ export class GroundSim {
         "takeoff",
         78,
       );
-      this.log(`${p.call}, cleared for takeoff runway 24.`);
+      this.log(`${p.call}, cleared for takeoff runway ${this.data.runway}.`);
       return { ok: true };
     }
     if (action === "land") {
@@ -477,27 +504,33 @@ export class GroundSim {
       if (this.runwayOwner)
         return reject("Runway occupied. Landing clearance unavailable.");
       const exit = this.nodes.get(this.data.arrivalExit);
-      const toApron = this.path(exit.id, this.data.stands[0].exit, true);
-      const safe = toApron.findIndex((n) => this.runwayDistance(n) > 85);
-      if (safe < 0) return reject("No safe runway exit.");
+      const toApron = this.data.configuration.vacatePath.map((id) =>
+        this.nodes.get(id),
+      );
+      if (
+        !toApron.length ||
+        this.runwayDistance(toApron.at(-1)) <=
+          this.data.activeRunway.releaseDistance
+      )
+        return reject("No safe runway exit.");
       this.runwayOwner = p.id;
       p.landingExit = exit.id;
       this.setRoute(
         p,
-        [this.data.runwayStart, exit, ...toApron.slice(1, safe + 1)],
+        [this.data.runwayStart, exit, ...toApron.slice(1)],
         "landing",
         65,
       );
-      this.log(`${p.call}, cleared to land runway 24.`);
+      this.log(`${p.call}, cleared to land runway ${this.data.runway}.`);
       return { ok: true };
     }
     if (action === "goaround") {
       if (p.state !== "approach")
         return reject("Only inbound flights can go around.");
       p.wait = 0;
-      this.score -= 25;
+      this.score -= this.scenario.scoring.goAround;
       this.log(
-        `${p.call}, go around. Rejoining the arrival queue. -25`,
+        `${p.call}, go around. Rejoining the arrival queue. -${this.scenario.scoring.goAround}`,
         "warning",
       );
       return { ok: true };
@@ -527,7 +560,7 @@ export class GroundSim {
       this.log(`${p.call}, pushback complete. Request taxi.`);
     } else if (p.state === "taxi") {
       p.state = "holding";
-      this.log(`${p.call}, holding short D1.`);
+      this.log(`${p.call}, holding short ${this.data.departureHoldLabel}.`);
     } else if (p.state === "lineup") {
       p.state = "linedup";
       p.angle = Math.atan2(
@@ -539,8 +572,11 @@ export class GroundSim {
       p.completedAt = this.time;
       this.runwayOwner = null;
       this.completed++;
-      this.score += 100;
-      this.log(`${p.call}, airborne. Handoff complete. +100`, "success");
+      this.score += this.scenario.scoring.movement;
+      this.log(
+        `${p.call}, airborne. Handoff complete. +${this.scenario.scoring.movement}`,
+        "success",
+      );
     } else if (p.state === "landing") {
       p.state = "inbound";
       this.runwayOwner = null;
@@ -549,8 +585,11 @@ export class GroundSim {
       p.state = "parked";
       p.parkedAt = this.time;
       this.completed++;
-      this.score += 100;
-      this.log(`${p.call}, on stand ${p.stand}. +100`, "success");
+      this.score += this.scenario.scoring.movement;
+      this.log(
+        `${p.call}, on stand ${p.stand}. +${this.scenario.scoring.movement}`,
+        "success",
+      );
     }
   }
   tick(dt) {
@@ -558,34 +597,44 @@ export class GroundSim {
     this.time += dt;
     if (this.time >= this.nextCleanup) {
       this.planes = this.planes.filter(
-        (p) => p.state !== "done" || this.time - p.completedAt < 60,
+        (p) =>
+          p.state !== "done" ||
+          this.time - p.completedAt < this.scenario.cleanupSeconds,
       );
       const ids = new Set(this.planes.map((p) => p.id));
       for (const pair of this.conflictPairs)
         if (pair.split(":").some((id) => !ids.has(+id)))
           this.conflictPairs.delete(pair);
-      this.nextCleanup = this.time + 60;
+      this.nextCleanup = this.time + this.scenario.cleanupSeconds;
     }
     if (this.time > this.nextArrival) {
       if (
-        this.planes.filter((p) => p.state === "approach").length < 2 &&
-        this.planes.filter((p) => p.state !== "done").length < 24
+        this.planes.filter((p) => p.state === "approach").length <
+          this.scenario.traffic.maxApproaches &&
+        this.planes.filter((p) => p.state !== "done").length <
+          this.scenario.traffic.maxActive
       )
         this.spawnArrival();
-      this.nextArrival += 210;
+      this.nextArrival += this.scenario.traffic.arrivalInterval;
     }
     if (this.time > this.nextDeparture) {
-      const free = this.freeStands().filter((s) => +s.id < 25);
+      const free = this.freeStands().filter((s) =>
+        this.scenario.departureStands.includes(s.id),
+      );
       if (
         free.length &&
         this.planes.filter(
           (p) => p.direction === "departure" && p.state !== "done",
-        ).length < 6
+        ).length < this.scenario.traffic.maxDepartures
       )
         this.spawnDeparture(
-          free[Math.floor(this.nextDeparture / 260) % free.length].id,
+          free[
+            Math.floor(
+              this.nextDeparture / this.scenario.traffic.departureInterval,
+            ) % free.length
+          ].id,
         );
-      this.nextDeparture += 260;
+      this.nextDeparture += this.scenario.traffic.departureInterval;
     }
     const active = this.planes.filter(
       (p) => !["done", "approach"].includes(p.state),
@@ -595,13 +644,16 @@ export class GroundSim {
       p.blocked = false;
       p.trafficWaiting = null;
       if (p.state === "approach") {
-        if (p.wait > 210) {
+        if (p.wait > this.scenario.goAroundSeconds) {
           this.command(p.id, "goaround");
           this.incidents++;
         }
         continue;
       }
-      if (p.state === "parked" && this.time - p.parkedAt > 100) {
+      if (
+        p.state === "parked" &&
+        this.time - p.parkedAt > this.scenario.turnaroundSeconds
+      ) {
         p.state = "gate";
         p.direction = "departure";
         this.log(`${p.call}, turnaround complete. Request pushback.`);
@@ -685,9 +737,9 @@ export class GroundSim {
                 if (!this.conflictPairs.has(pair)) {
                   this.conflictPairs.add(pair);
                   this.incidents++;
-                  this.score -= 20;
+                  this.score -= this.scenario.scoring.conflict;
                   this.log(
-                    `${p.call}, conflicting traffic: ${q.call}. Hold position. -20`,
+                    `${p.call}, conflicting traffic: ${q.call}. Hold position. -${this.scenario.scoring.conflict}`,
                     "warning",
                   );
                 }

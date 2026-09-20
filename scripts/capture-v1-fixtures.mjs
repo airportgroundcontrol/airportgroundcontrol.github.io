@@ -13,11 +13,7 @@ if (fs.existsSync(directory))
   throw new Error(
     "Archive already exists. Review baseline changes before replacing it.",
   );
-const data = JSON.parse(
-  fs.readFileSync(
-    new URL("../data/airports/egph/geometry.json", import.meta.url),
-  ),
-);
+import { defaultAirport as data } from "../src/airports/catalog.js";
 const baselineCommit = execFileSync("git", ["rev-parse", "HEAD"], {
   encoding: "utf8",
 }).trim();

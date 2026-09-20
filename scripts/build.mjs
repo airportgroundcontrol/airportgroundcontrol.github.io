@@ -7,7 +7,13 @@ fs.mkdirSync("dist/data", { recursive: true });
 for (const name of ["index.html", "style.css"]) {
   fs.copyFileSync(`web/${name}`, `dist/${name}`);
 }
-fs.copyFileSync("data/airports/egph/geometry.json", "dist/data/egph.json");
+for (const entry of fs.readdirSync("data/airports", { withFileTypes: true })) {
+  if (entry.isDirectory())
+    fs.copyFileSync(
+      `data/airports/${entry.name}/geometry.json`,
+      `dist/data/${entry.name}.json`,
+    );
+}
 await build({
   entryPoints: ["src/app.js"],
   bundle: true,

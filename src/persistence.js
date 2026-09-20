@@ -47,6 +47,35 @@ export function airportRevision(data) {
   return (hash >>> 0).toString(16);
 }
 
+export function configurationRevision(data) {
+  // Canonical keys make whitespace/property-order-only config edits harmless.
+  const canonical = (value) =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : object(value)
+        ? Object.fromEntries(
+            Object.keys(value)
+              .sort()
+              .map((key) => [key, canonical(value[key])]),
+          )
+        : value;
+  const { weather, clockStartSeconds, ...scenario } = data.scenario;
+  const source = JSON.stringify(
+    canonical({
+      operations: {
+        version: data.operations.version,
+        runways: data.operations.runways,
+        holdingPoints: data.operations.holdingPoints,
+      },
+      scenario,
+    }),
+  );
+  let hash = 2166136261;
+  for (let i = 0; i < source.length; i++)
+    hash = Math.imul(hash ^ source.charCodeAt(i), 16777619);
+  return (hash >>> 0).toString(16);
+}
+
 export function captureSimulation(sim) {
   const state = Object.fromEntries(counters.map((key) => [key, sim[key]]));
   for (const key of timers)
@@ -260,6 +289,10 @@ export class GameStorage {
     this.storage = storage;
     this.airport = data.id;
     this.revision = airportRevision(data);
+    this.configurationRevision = configurationRevision(data);
+    this.scenario = { id: data.scenario.id, version: data.scenario.version };
+    this.operationsVersion = data.operations.version;
+    this.legacy = data.compatibility?.legacyV1;
     this.key = "ground-control:save:" + data.id;
   }
   load(sim) {
@@ -273,15 +306,28 @@ export class GameStorage {
     try {
       if (raw.length > 2_000_000) throw new Error("Save too large");
       const saved = JSON.parse(raw);
+      const legacy =
+        saved.configurationRevision === undefined &&
+        saved.scenario === undefined &&
+        saved.operationsVersion === undefined;
+      const compatible = legacy
+        ? this.legacy?.revision === this.revision &&
+          this.legacy?.configurationRevision === this.configurationRevision
+        : saved.configurationRevision === this.configurationRevision &&
+          saved.scenario?.id === this.scenario.id &&
+          saved.scenario?.version === this.scenario.version &&
+          saved.operationsVersion === this.operationsVersion;
       if (
         saved.version !== version ||
         saved.airport !== this.airport ||
         saved.revision !== this.revision ||
+        !compatible ||
         !restoreSimulation(sim, saved.simulation)
       )
         throw new Error("Incompatible save");
       return { status: "restored", ui: restoreView(saved.ui, sim) };
     } catch {
+      this.protectOriginal = true;
       // Keep the original for recovery before replacing an invalid or unsupported save.
       try {
         this.storage().setItem(this.key + ":recovery", raw);
@@ -290,6 +336,9 @@ export class GameStorage {
       }
       return { status: "invalid" };
     }
+  }
+  startNewGame() {
+    this.protectOriginal = false;
   }
   save(sim, ui) {
     if (this.protectOriginal) return false;
@@ -300,6 +349,9 @@ export class GameStorage {
           version,
           airport: this.airport,
           revision: this.revision,
+          configurationRevision: this.configurationRevision,
+          scenario: this.scenario,
+          operationsVersion: this.operationsVersion,
           savedAt: Date.now(),
           simulation: captureSimulation(sim),
           ui,

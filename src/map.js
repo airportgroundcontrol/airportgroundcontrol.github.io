@@ -4,7 +4,7 @@ export class AirportMap {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.sim = sim;
-    this.selected = 1;
+    this.selected = sim.planes[0]?.id ?? null;
     this.preview = [];
     this.waypoints = [];
     this.labels = true;
@@ -44,10 +44,16 @@ export class AirportMap {
         ? Math.min(this.height * 0.5, header + panel.offsetHeight + 24)
         : header + 20;
     const bottom = this.height - 55;
-    const zoom = Math.min(width / 3400, (bottom - top) / 1900);
+    const bounds = this.sim.data.operations.map.bounds;
+    const zoom = Math.min(
+      width / (bounds.maxX - bounds.minX),
+      (bottom - top) / (bounds.maxY - bounds.minY),
+    );
     this.camera = {
-      x: 70 + (this.width - width) / 2 / zoom,
-      y: -65 + (this.height / 2 - (top + bottom) / 2) / zoom,
+      x: (bounds.minX + bounds.maxX) / 2 + (this.width - width) / 2 / zoom,
+      y:
+        (bounds.minY + bounds.maxY) / 2 +
+        (this.height / 2 - (top + bottom) / 2) / zoom,
       zoom,
     };
   }
@@ -137,7 +143,11 @@ export class AirportMap {
         this.onDismiss();
         const p = this.world(x, y);
         const nearest = this.sim.data.nodes
-          .filter((n) => this.sim.runwayDistance(n) > 30)
+          .filter(
+            (n) =>
+              this.sim.runwayDistance(n) >
+              this.sim.data.activeRunway.protectedHalfWidth,
+          )
           .sort((a, b) => distance(a, p) - distance(b, p))[0];
         if (nearest && distance(nearest, p) * this.camera.zoom < 24)
           this.onWaypoint(nearest.id);
@@ -295,7 +305,11 @@ export class AirportMap {
       c.fillStyle = "#e8e9d9";
       c.font = `bold ${Math.max(10, 28 * z)}px sans-serif`;
       c.textAlign = "center";
-      c.fillText(i ? "06" : "24", i ? 0 : 0, -5);
+      c.fillText(
+        i ? this.sim.data.oppositeRunway : this.sim.data.runway,
+        0,
+        -5,
+      );
       for (let k = -3; k <= 3; k++)
         if (k !== 0) c.fillRect(25 * z, k * 5 * z, 30 * z, 2.5 * z);
       c.restore();
@@ -317,7 +331,12 @@ export class AirportMap {
       )?.stand;
       for (const s of this.sim.data.stands) {
         if (z < 0.2 && s.id !== selectedStand) continue;
-        if (z >= 0.2 && z < 0.4 && +s.id % 2 !== 0) continue;
+        if (
+          z >= 0.2 &&
+          z < 0.4 &&
+          !this.sim.data.operations.map.mediumZoomStands.includes(s.id)
+        )
+          continue;
         const p = this.screen(this.sim.nodes.get(s.node));
         const busy = this.sim.planes.some(
           (q) => q.stand === s.id && q.state !== "done",
@@ -330,12 +349,11 @@ export class AirportMap {
           Math.max(8, Math.min(12, 15 * z)),
         );
       }
-      if (z >= 0.2) {
-        const t = this.screen({ x: 550, y: 270 });
-        this.label("TERMINAL", t.x, t.y, "#bccbb7", 10);
+      for (const label of this.sim.data.operations.map.labels) {
+        if (z < label.minZoom) continue;
+        const p = this.screen(label);
+        this.label(label.text, p.x, p.y, label.color || "#bccbb7", 10);
       }
-      const a = this.screen({ x: -650, y: -100 });
-      this.label("RWY 06 / 24", a.x, a.y, "#85997d", 10);
     }
     const selectedPlane = this.sim.planes.find((p) => p.id === this.selected);
     const routeHolds = new Set(

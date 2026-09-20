@@ -1,15 +1,18 @@
 # Ground Control: Architecture Implementation Plan
 
-Status: first work package implemented: Phase 0 baseline protection and Phase 1 source layout, formatting and initial typed contracts. Phases 2-7 remain planned.
+Status: Phase 0/1 foundation complete; GameSession and the single-runway airport/scenario package refactor implemented. Broader Phase 2 save tooling and Phases 4-7 remain planned.
 Baseline: gameplay commit `fb7b28f85f486d62a2cb5040ccc13e3dc212aa25`; handoff commit `3acbe2295a00cd3442ece851e95aa7db6e440479`.
 Goal: evolve the playable MVP into a maintainable, multi-airport ground-control game without a rewrite, a backend, or lost progress.
 
 ## Implementation Checkpoint
 
 - Phase 0: 23 archived v1 saves with continuation digests, configurable/self-contained browser runner, desktop/mobile references and same-machine performance report under `tests/baselines/`.
-- Phase 1: dedicated mechanical-format commit; authored UI in `web/`, unchanged airport bytes in `data/airports/egph/geometry.json`, fully generated/ignored `dist/`, checked offline packaging, pinned formatter/TypeScript tooling and initial domain contracts. Strict TypeScript currently checks contracts and the actual traffic-geometry JavaScript module, not the whole engine/UI. Scenario types describe the future boundary; scenario configuration is not yet wired into gameplay.
-- Save schema remains version 1. There are no gameplay, timing-policy, airport-network or UI changes in this package.
-- Next: Phase 2 session ownership and save evolution. Continue expanding type coverage at extracted boundaries. Do not start additional airports or multi-runway behavior before those prerequisites.
+- Phase 1: readable source, `web/`, unchanged geometry bytes, disposable build output, offline packaging and initial contracts. Strict TypeScript still covers contracts/traffic geometry, not the whole legacy engine/UI.
+- Phase 2 subset: `GameSession` owns engine, commands/results/radio events, pacing, restore/save/restart/disposal. UI and integration commands share dispatch. Incompatible originals cannot be overwritten until explicit Restart. General migrations, recovery downloads, export/import, backups and tab ownership remain unfinished.
+- Airport package foundation (Phase 3): immutable geometry/operations/scenario inputs with runtime validation; no Edinburgh-specific operating assumptions in shared engine/map/UI/importer. Curated arrival vacate paths replace inferred first-stand exits. Map fitting/labels and all airport metadata come from configuration. The generic importer requires an explicit descriptor and writes only new validated candidates. One physical runway remains the supported scope; aircraft-size eligibility and richer protected-area rules are future work.
+- User-directed sequence: GameSession first, then airport independence, without waiting for all Phase 2 product tooling. No aircraft-state migration was needed: v1 state/geometry and all 23 continuation fixtures remain identical. Additive envelope metadata identifies scenario/operations/configuration and pinned legacy compatibility. See `data/airports/README.md`.
+- Verification: 70 unit/fixture/importer checks, strict current type checks, four browser suites, desktop/mobile Canvas checks, synthetic per-airport save switching and offline builds. Original Edinburgh OSM reimport matches existing geometry bytes exactly.
+- Next: complete save evolution/tab ownership before changing state shapes, and continue focused UI/typed-boundary extraction. A second real airport is not yet included.
 - Publishing this checkpoint is currently blocked: the connected account returns `Sites project not found` for the existing site. Local development and testing are unaffected; existing hosting metadata/audience remain untouched.
 
 ## Decisions and Guardrails
@@ -24,7 +27,9 @@ Goal: evolve the playable MVP into a maintainable, multi-airport ground-control 
 - Treat save preservation as an acceptance criterion. Never map an aircraft onto new geometry by guessing its nearest node.
 - Keep development independent of a Codex account or hosting provider. Deployment access stays a separate concern.
 
-## Current Constraints Found in the Code
+## Original Constraints
+
+Historical baseline findings below motivated the plan. The checkpoint above records what is now resolved; remaining phase descriptions retain their full intended scope.
 
 | Area | Current limitation | Consequence |
 | --- | --- | --- |

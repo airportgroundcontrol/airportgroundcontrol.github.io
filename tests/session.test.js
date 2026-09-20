@@ -2,11 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { GameSession } from "../src/session/game-session.js";
-const data = JSON.parse(
-  fs.readFileSync(
-    new URL("../data/airports/egph/geometry.json", import.meta.url),
-  ),
-);
+import { defaultAirport as data } from "../src/airports/catalog.js";
 const memory = () => {
   const entries = new Map();
   return {

@@ -5,7 +5,7 @@ Read `CONTINUE_HERE.md`, `ROADMAP.md`, and `README.md` before changing the proje
 ## Product Constraints
 
 - Browser-only, no runtime backend or API keys. Preserve both the static site and standalone offline HTML.
-- Use real airport geometry and connected taxi routes. Edinburgh is currently the sole airport, runway 24 active.
+- Use real airport geometry and connected taxi routes. Edinburgh is the sole real catalog package, but shared code must remain airport-independent. Synthetic airports belong only in tests.
 - Preserve endless play, dark default theme, full-screen map, full-height floating right panel, grouped compact cards, gentle request pulses, compact aircraft action menus and keyboard shortcuts.
 - Successful actions close the menu. Requests sort before routine traffic; reduced-motion preferences are respected.
 - Preserve saves across normal reloads. Save-schema or routing changes require a deliberate compatibility/migration decision, not silent loss of progress.
@@ -20,6 +20,9 @@ Read `CONTINUE_HERE.md`, `ROADMAP.md`, and `README.md` before changing the proje
 - Type checking currently covers domain contracts, traffic geometry and compile-time contract tests, not the entire JavaScript engine/UI. Extend coverage as modules migrate; do not replace runtime save validation with casts.
 - Preserve archived `tests/fixtures/v1/` and `tests/baselines/` references. Tests must not regenerate their own expectations. Airport data byte/hash changes need an explicit compatibility decision.
 - Keep simulation/traffic logic independent of the DOM and storage. Prefer existing ngraph routing and Lucide icons over new dependencies.
+- Route all application/integration commands through `GameSession`; do not add new direct engine command or storage paths in the UI.
+- Read `data/airports/README.md` for packages. Keep names, stands, runway ends/connections, schedules/scoring and map settings in data. Run `createAirportPackage` validation before starting a session. Never guess safe runway exits or add unvalidated real-airport catalog entries.
+- The v1 flight-state schema/geometry remain unchanged; new envelopes add configuration/scenario/operations metadata. Do not change pinned compatibility hashes to bypass an incompatible save. Explicit Restart is the only current opt-in to replacing a protected invalid save. General migrations, export/import and tab locking are not implemented yet.
 - Do not revert unrelated changes. Update the roadmap/handoff when project assumptions or completed work change.
 
 ## Account and Hosting Boundary

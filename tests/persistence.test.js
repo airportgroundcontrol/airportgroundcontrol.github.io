@@ -9,11 +9,7 @@ import {
   restoreView,
   airportRevision,
 } from "../src/persistence.js";
-const data = JSON.parse(
-  fs.readFileSync(
-    new URL("../data/airports/egph/geometry.json", import.meta.url),
-  ),
-);
+import { defaultAirport as data } from "../src/airports/catalog.js";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const memory = () => {
   const entries = new Map();

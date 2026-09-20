@@ -23,7 +23,8 @@ import {
   Keyboard,
   PanelRight,
 } from "lucide";
-import airportData from "../data/airports/egph/geometry.json";
+import { airportCatalog, defaultAirport } from "./airports/catalog.js";
+import { populateAirportUI } from "./ui/airport.js";
 import {
   flightStatus,
   requestsAction,
@@ -34,6 +35,11 @@ import { AirportMap } from "./map.js";
 import { GameSession } from "./session/game-session.js";
 
 const $ = (id) => document.getElementById(id);
+const airportData =
+  airportCatalog.find(
+    (airport) =>
+      airport.id === new URL(location.href).searchParams.get("airport"),
+  ) || defaultAirport;
 const icon = (name) => '<i data-lucide="' + name + '"></i>';
 const icons = {
   Plane,
@@ -62,7 +68,9 @@ const icons = {
 const refreshIcons = () =>
   createIcons({ icons, attrs: { "stroke-width": 1.7 } });
 const formatTime = (t) =>
-  new Date((8 * 3600 + Math.floor(t)) * 1000).toISOString().slice(11, 19);
+  new Date((airportData.scenario.clockStartSeconds + Math.floor(t)) * 1000)
+    .toISOString()
+    .slice(11, 19);
 const shortcuts = {
   p: "pushback",
   t: "preview",
@@ -274,7 +282,7 @@ function options(p) {
     return [
       action(
         "land",
-        "Clear to land / 24",
+        "Clear to land / " + sim.data.runway,
         "plane-landing",
         "L",
         true,
@@ -291,7 +299,7 @@ function options(p) {
     actions.push(
       action(
         "lineup",
-        "Line up & wait / 24",
+        "Line up & wait / " + sim.data.runway,
         "arrow-up-right",
         "U",
         true,
@@ -524,7 +532,9 @@ function menuHTML(p) {
       '<div class="route-summary">' +
       (sim.routeNames(map.preview).join(" → ") || "Apron") +
       " → " +
-      (arriving ? "Stand " + destination : "D1 / RWY 24") +
+      (arriving
+        ? "Stand " + destination
+        : `${sim.data.departureHoldLabel} / RWY ${sim.data.runway}`) +
       "</div>";
   content +=
     '<div class="menu-actions" role="menu" aria-label="Clearances for ' +
@@ -573,8 +583,8 @@ function render() {
   $("runway-status").textContent = runway ? runway.call : "Available";
   $("runway-badge").classList.toggle("occupied", !!runway);
   $("runway-badge").title = runway
-    ? "Runway 24 occupied by " + runway.call
-    : "Runway 24 available";
+    ? `Runway ${sim.data.runway} occupied by ` + runway.call
+    : `Runway ${sim.data.runway} available`;
   if (menuOpen && (!p || p.state === "done")) closeMenu();
   if (menuOpen) {
     const html = menuHTML(p);
@@ -659,7 +669,7 @@ function render() {
                     ? p.holdLabel
                     : p.stand
                       ? "S" + p.stand
-                      : "24") +
+                      : sim.data.runway) +
                 "</span></button>",
             )
             .join("") +
@@ -702,7 +712,9 @@ function render() {
   $("route-text").textContent =
     (waypoints.length ? waypoints.length + " via / " : "") +
     "Taxi to " +
-    (p?.direction === "arrival" ? "stand " + destination : "D1 / 24");
+    (p?.direction === "arrival"
+      ? "stand " + destination
+      : `${sim.data.departureHoldLabel} / ${sim.data.runway}`);
   $("route-issue").disabled = map.preview.length < 2;
 }
 function restart() {
@@ -774,7 +786,6 @@ $("route-clear").onclick = () => {
 };
 $("route-issue").onclick = () => issue("taxi");
 $("airport-button").onclick = () => showDialog("airport-dialog");
-$("select-edinburgh").onclick = () => $("airport-dialog").close();
 $("restart").onclick = () => showDialog("restart-dialog");
 $("cancel-restart").onclick = () => $("restart-dialog").close();
 $("confirm-restart").onclick = () => {
@@ -893,6 +904,22 @@ document.addEventListener("visibilitychange", () => {
 
 async function start() {
   try {
+    populateAirportUI(airportData, airportCatalog, (airport) => {
+      if (airport.id === airportData.id) {
+        $("airport-dialog").close();
+        return;
+      }
+      if (!saveGame()) {
+        toast(
+          "Save unavailable. Airport change cancelled to protect this session.",
+        );
+        return;
+      }
+      const url = new URL(location.href);
+      url.searchParams.set("airport", airport.id);
+      location.assign(url.href);
+    });
+    refreshIcons();
     session = new GameSession(airportData, {
       readView,
       onSaveError: saveFailed,
@@ -958,13 +985,13 @@ async function start() {
     dataDownload.href = URL.createObjectURL(
       new Blob([JSON.stringify(airportData)], { type: "application/json" }),
     );
-    dataDownload.download = "egph.json";
+    dataDownload.download = airportData.id.toLowerCase() + ".json";
     render();
+    session.activate();
     if (saved.status === "invalid")
       toast(
-        "Saved game could not be restored. A recovery copy was kept where storage allows.",
+        "Previous save preserved but incompatible. Restart explicitly to save a new game.",
       );
-    session.activate();
     window.groundControl = {
       session,
       sim,

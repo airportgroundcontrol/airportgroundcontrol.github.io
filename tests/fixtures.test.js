@@ -4,11 +4,7 @@ import fs from "node:fs";
 import { createHash } from "node:crypto";
 import { GroundSim } from "../src/sim.js";
 import { GameStorage, captureSimulation } from "../src/persistence.js";
-const data = JSON.parse(
-  fs.readFileSync(
-    new URL("../data/airports/egph/geometry.json", import.meta.url),
-  ),
-);
+import { defaultAirport as data } from "../src/airports/catalog.js";
 const directory = new URL("./fixtures/v1/", import.meta.url);
 const manifest = JSON.parse(
   fs.readFileSync(new URL("manifest.json", directory)),

@@ -1,17 +1,46 @@
 import fs from "node:fs";
+import path from "node:path";
 import { XMLParser } from "fast-xml-parser";
+import { createAirportPackage } from "../src/airports/package.js";
+import { airportRevision } from "../src/persistence.js";
 
-const source = process.argv[2] || "../work/egph.osm";
+const [source, descriptor, output] = process.argv.slice(2);
+if (!source || !descriptor || !output)
+  throw new Error(
+    "Usage: node scripts/import-airport.mjs source.osm airport/import.json candidate.geometry.json",
+  );
+if (fs.existsSync(output))
+  throw new Error(
+    "Output already exists. Choose a new candidate file; do not overwrite a published graph.",
+  );
+const metadata = JSON.parse(fs.readFileSync(descriptor, "utf8"));
+const directory = path.dirname(path.resolve(descriptor));
+const operations = JSON.parse(
+  fs.readFileSync(path.resolve(directory, metadata.operations), "utf8"),
+);
+const scenario = JSON.parse(
+  fs.readFileSync(path.resolve(directory, metadata.scenario), "utf8"),
+);
+const runway = operations.runways.find((r) =>
+  r.configurations.some((c) => c.endId === scenario.activeRunwayEnd),
+);
+if (!runway)
+  throw new Error("No curated runway configuration for this scenario");
+const active = runway.ends.find((e) => e.id === scenario.activeRunwayEnd);
+const opposite = runway.ends.find((e) => e.id !== scenario.activeRunwayEnd);
+const configuration = runway.configurations.find(
+  (c) => c.endId === scenario.activeRunwayEnd,
+);
 const raw = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "",
 }).parse(fs.readFileSync(source, "utf8")).osm;
-const array = (v) => (!v ? [] : Array.isArray(v) ? v : [v]);
-const tags = (v) => Object.fromEntries(array(v.tag).map((t) => [t.k, t.v]));
-const lon0 = -3.372,
-  lat0 = 55.95;
+const array = (value) => (!value ? [] : Array.isArray(value) ? value : [value]);
+const tags = (value) =>
+  Object.fromEntries(array(value.tag).map((t) => [t.k, t.v]));
+const [lon0, lat0] = metadata.center;
 const nodes = new Map(
-  raw.node.map((n) => [
+  array(raw.node).map((n) => [
     String(n.id),
     {
       id: String(n.id),
@@ -24,7 +53,7 @@ const nodes = new Map(
     },
   ]),
 );
-const ways = raw.way.map((w) => ({
+const ways = array(raw.way).map((w) => ({
   id: String(w.id),
   tags: tags(w),
   nodes: array(w.nd).map((n) => String(n.ref)),
@@ -54,45 +83,35 @@ const features = ways
 const routeWays = ways.filter((w) =>
   ["taxiway", "taxilane", "parking_position"].includes(w.tags.aeroway),
 );
-const routeNodes = new Map();
-const edges = [];
+const routeNodes = new Map(),
+  edges = [];
 for (const w of routeWays) {
-  for (const id of w.nodes)
-    if (nodes.has(id)) routeNodes.set(id, nodes.get(id));
+  if (w.nodes.some((id) => !nodes.has(id)))
+    throw new Error("Incomplete OSM route way: " + w.id);
+  for (const id of w.nodes) routeNodes.set(id, nodes.get(id));
   for (let i = 1; i < w.nodes.length; i++)
-    if (nodes.has(w.nodes[i - 1]) && nodes.has(w.nodes[i]))
-      edges.push({
-        a: w.nodes[i - 1],
-        b: w.nodes[i],
-        ref: w.tags.ref || "",
-        type: w.tags.aeroway,
-      });
+    edges.push({
+      a: w.nodes[i - 1],
+      b: w.nodes[i],
+      ref: w.tags.ref || "",
+      type: w.tags.aeroway,
+    });
 }
 const adjacency = new Map([...routeNodes.keys()].map((id) => [id, []]));
 for (const e of edges) {
   adjacency.get(e.a).push(e.b);
   adjacency.get(e.b).push(e.a);
 }
-const components = [];
-const seen = new Set();
-for (const id of adjacency.keys()) {
-  if (seen.has(id)) continue;
-  const group = [];
-  const q = [id];
-  seen.add(id);
-  while (q.length) {
-    const a = q.pop();
-    group.push(a);
-    for (const b of adjacency.get(a))
-      if (!seen.has(b)) {
-        seen.add(b);
-        q.push(b);
-      }
-  }
-  components.push(group);
+if (!adjacency.has(configuration.departureHold))
+  throw new Error("Configured departure hold is absent from source data");
+const connected = new Set(),
+  pending = [configuration.departureHold];
+while (pending.length) {
+  const id = pending.pop();
+  if (connected.has(id)) continue;
+  connected.add(id);
+  pending.push(...adjacency.get(id).filter((id) => !connected.has(id)));
 }
-components.sort((a, b) => b.length - a.length);
-const connected = new Set(components[0]);
 const stands = routeWays
   .filter(
     (w) =>
@@ -110,50 +129,26 @@ const stands = routeWays
       nodes.get(w.nodes.at(-1)).x - nodes.get(w.nodes.at(-2)).x,
     ),
   }))
-  .filter((s) => /^\d+$/.test(s.id) && +s.id <= 34)
-  .sort((a, b) => +a.id - +b.id);
-const rw = ways.find(
-  (w) => w.tags.aeroway === "runway" && w.tags.ref === "06/24",
-);
-const rwpoints = ways
-  .filter((w) => w.tags.aeroway === "runway")
-  .flatMap((w) => w.nodes.map((id) => nodes.get(id)));
-const northeast = rwpoints.reduce((a, b) => (a.x > b.x ? a : b)),
-  southwest = rwpoints.reduce((a, b) => (a.x < b.x ? a : b));
-const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-const candidates = [...routeNodes.values()].filter(
-  (n) => connected.has(n.id) && n.tags.aeroway === "holding_position",
-);
-const runwayOffset = (n) =>
-  Math.abs(
-    (n.x - northeast.x) * (southwest.y - northeast.y) -
-      (n.y - northeast.y) * (southwest.x - northeast.x),
-  ) / distance(northeast, southwest);
-const start = [...routeNodes.values()]
-  .filter((n) => connected.has(n.id) && runwayOffset(n) < 1)
-  .sort((a, b) => distance(a, northeast) - distance(b, northeast))[0];
-const holding = candidates.find((n) => n.tags.ref === "D1");
-// Keep mapped taxiway/runway junctions; arrival exits must actually meet the runway.
-const junctions = rw.nodes
-  .filter((id) => connected.has(id))
-  .map((id) => nodes.get(id));
-const arrival = junctions
-  .filter((n) => distance(n, northeast) > 1000)
-  .sort((a, b) => distance(a, northeast) - distance(b, northeast))[0];
-const airport = {
-  id: "EGPH",
-  iata: "EDI",
-  name: "Edinburgh",
-  country: "United Kingdom",
+  .filter((s) => metadata.standIds.includes(s.id))
+  .sort(
+    (a, b) => metadata.standIds.indexOf(a.id) - metadata.standIds.indexOf(b.id),
+  );
+if (stands.length !== metadata.standIds.length)
+  throw new Error("Not all curated stands were found exactly once");
+const geometry = {
+  id: metadata.id,
+  iata: metadata.iata,
+  name: metadata.name,
+  country: metadata.country,
   center: [lon0, lat0],
-  runway: "24",
-  runwayLength: Math.round(distance(northeast, southwest)),
-  source: {
-    name: "OpenStreetMap contributors",
-    url: "https://www.openstreetmap.org/copyright",
-    downloaded: "2026-09-20",
-    license: "ODbL 1.0",
-  },
+  runway: active.label,
+  runwayLength: Math.round(
+    Math.hypot(
+      active.position.x - opposite.position.x,
+      active.position.y - opposite.position.y,
+    ),
+  ),
+  source: metadata.source,
   features,
   nodes: [...routeNodes.values()]
     .filter((n) => connected.has(n.id))
@@ -166,29 +161,26 @@ const airport = {
     })),
   edges: edges.filter((e) => connected.has(e.a)),
   stands,
-  runwayStart: { x: northeast.x, y: northeast.y },
-  runwayEnd: { x: southwest.x, y: southwest.y },
-  departureEntry: start.id,
-  departureHold: holding?.id,
-  arrivalExit: arrival?.id,
+  runwayStart: active.position,
+  runwayEnd: opposite.position,
+  departureEntry: configuration.departureEntry,
+  departureHold: configuration.departureHold,
+  arrivalExit: configuration.arrivalExit,
 };
-fs.mkdirSync("data/airports/egph", { recursive: true });
-fs.writeFileSync("data/airports/egph/geometry.json", JSON.stringify(airport));
+const airport = createAirportPackage({ geometry, operations, scenario });
+fs.mkdirSync(path.dirname(output), { recursive: true });
+fs.writeFileSync(output, JSON.stringify(geometry));
 console.log(
   JSON.stringify(
     {
-      components: components.map((c) => c.length),
-      nodes: airport.nodes.length,
-      edges: airport.edges.length,
-      stands: airport.stands.length,
-      holds: candidates.map((n) => ({
-        id: n.id,
-        ref: n.tags.ref,
-        dist: Math.round(distance(n, northeast)),
-      })),
-      start,
-      arrival,
-      junctions,
+      output,
+      airport: airport.id,
+      nodes: geometry.nodes.length,
+      edges: geometry.edges.length,
+      stands: stands.length,
+      revision: airportRevision(airport),
+      status:
+        "Validated candidate only; review before replacing published geometry.",
     },
     null,
     2,

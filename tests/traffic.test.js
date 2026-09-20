@@ -8,11 +8,7 @@ import {
   groupedFlights,
 } from "../src/sim.js";
 import { routeConflict, separation } from "../src/traffic.js";
-const data = JSON.parse(
-  fs.readFileSync(
-    new URL("../data/airports/egph/geometry.json", import.meta.url),
-  ),
-);
+import { defaultAirport as data } from "../src/airports/catalog.js";
 const setup = () => {
   const s = new GroundSim(data);
   s.nextArrival = s.nextDeparture = Infinity;

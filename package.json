@@ -10,8 +10,8 @@
     "test:browser": "node scripts/test-browser.mjs",
     "benchmark": "node scripts/test-browser.mjs --benchmark",
     "typecheck": "tsc --noEmit",
-    "format": "prettier --write 'src/**/*.{js,ts}' 'scripts/*.mjs' 'tests/*.{js,mjs}' 'tests/types/*.ts'",
-    "format:check": "prettier --check 'src/**/*.{js,ts}' 'scripts/*.mjs' 'tests/*.{js,mjs}' 'tests/types/*.ts'",
+    "format": "prettier --write 'src/**/*.{js,ts}' 'scripts/*.mjs' 'tests/**/*.{js,mjs,ts}'",
+    "format:check": "prettier --check 'src/**/*.{js,ts}' 'scripts/*.mjs' 'tests/**/*.{js,mjs,ts}'",
     "verify": "npm run build && node scripts/check-build.mjs && npm run typecheck && npm test && npm run test:browser"
   },
   "dependencies": {

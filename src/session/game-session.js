@@ -13,6 +13,7 @@ export class GameSession {
     } = {},
   ) {
     this.airport = airport;
+    this.scenario = airport.scenario;
     this.sim = new GroundSim(airport);
     this.storage = new GameStorage(airport, storage);
     this.readView = readView;
@@ -88,6 +89,7 @@ export class GameSession {
 
   restart(resetView = () => {}) {
     if (this.disposed) return false;
+    this.storage.startNewGame();
     this.sim.reset();
     this.paused = false;
     resetView();

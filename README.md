@@ -1,6 +1,6 @@
 # Ground Control
 
-A browser-only playable MVP on Edinburgh Airport's actual OpenStreetMap geometry.
+A browser-only airport ground-control game with a data-driven airport engine. Edinburgh Airport's actual OpenStreetMap geometry is the first included package.
 
 Continuing from another account or a fresh task? Start with [CONTINUE_HERE.md](CONTINUE_HERE.md). Planned architecture and feature work lives in [ROADMAP.md](ROADMAP.md); [AGENTS.md](AGENTS.md) preserves project instructions for coding agents.
 
@@ -37,7 +37,7 @@ For continuous sessions, departed aircraft and their conflict records are retire
 
 The game automatically saves locally in this browser, once per second, after commands and UI interactions, and when the page is hidden or closed. Reloading or reopening the same site restores aircraft, routes, clearances, holding limits, traffic instructions, runway occupancy, scheduling timers, scores and radio logs. It also restores selection, speed, pause state, filters, panel visibility, map labels, pan/zoom, and an unissued route draft. Popups and dialogs reopen closed. Time does not advance while the game is closed. Restart explicitly replaces the current save.
 
-Storage uses a versioned `localStorage` snapshot per airport. The immutable airport graph is not saved. Loading validates the simulation before applying it and checks the airport routing revision. Invalid or incompatible saves are retained under a recovery key when storage permits; the game starts fresh instead of loading broken routes. Future save-format changes need an explicit migration. If browser storage is unavailable or full, play still works and a warning is shown.
+Storage uses a versioned `localStorage` snapshot per airport. The immutable airport graph is not saved. Loading validates simulation state, geometry revision and operational/scenario compatibility. Existing Edinburgh v1 saves are admitted by a pinned compatibility entry without changing their flight state. New v1 envelopes add configuration, scenario and operations-version metadata. Invalid/incompatible originals are preserved and copied to a recovery key when possible; the temporary fresh session cannot overwrite them until you explicitly Restart. If browser storage is unavailable or full, play still works and a warning is shown. General version migrations and a recovery-download UI remain planned.
 
 Saves belong to the current browser profile and site address, not an account. There is no cloud sync. Clearing site data removes them; private browsing may discard them on exit. The offline HTML has a separate save, whose availability depends on the browser's local-file storage policy. Use one active game tab; simultaneous tabs are not coordinated and the most recent save wins.
 
@@ -51,26 +51,30 @@ This is a static, client-only JavaScript application with no runtime backend or 
 | `src/traffic.js` | Pure route geometry for spacing, merges, crossings and conditional traffic clearances. |
 | `src/map.js` | Canvas renderer, map camera, aircraft hit testing, pan/zoom and input callbacks. |
 | `src/app.js` | Menus, flight groups, keyboard shortcuts, UI state, simulation loop and coordination. |
+| `src/session/game-session.js` | Owns simulation, command dispatch/results/events, pacing, restore/autosave, restart and disposal. UI and integration commands share this entry point. |
+| `src/airports/package.js` | Validates/freezes airport geometry, operations and scenario data and creates the engine-facing view. |
+| `src/airports/catalog.js` | Explicit bundled airport registry; the only runtime module importing Edinburgh-specific files. |
+| `src/ui/airport.js` | Airport-derived header, catalog, weather, attribution and radio metadata. |
 | `src/persistence.js` | Versioned snapshots, validation, save/reload and safe recovery. |
 | `data/airports/egph/geometry.json` | Authored airport geometry and routing network, copied unchanged to the published `data/egph.json` URL. |
 | `web/` | Authored static HTML and CSS. |
-| `src/domain/contracts.ts` | Initial state/command/data/save contracts; no runtime state migration. |
+| `src/domain/contracts.ts` | State/command/session-result and geometry/operations/scenario/save contracts. |
 | `scripts/import-airport.mjs` | Offline OpenStreetMap ingestion; no map API is required during gameplay. |
 | `scripts/build.mjs` | esbuild bundle plus the standalone offline HTML. |
 
 Flow: mouse/keyboard input -> validated simulation command -> time-step updates -> Canvas/DOM rendering and periodic snapshots. Routing uses A* through ngraph.graph/ngraph.path; icons use Lucide. Tests exercise the simulation without a browser and actual gameplay with Playwright.
 
-The first architecture package adds readable source, independent build output, archived save regressions and initial typed contracts. Strict type checking currently covers domain contracts, traffic geometry and compile-time tests, not the full engine/UI. Branded identifiers and discriminated commands are boundary vocabulary for incremental adoption; they do not replace runtime JSON validation. Scenario types are not yet wired into the engine. Next comes session/save ownership, then data-driven airports and focused UI modules. Multiple runways and deterministic timing remain future work; no gameplay rules or save schema changed in this package.
+`GameSession` now owns commands and persistence. Geometry, curated operations and scenarios are separate package inputs; the engine, UI, map and importer no longer contain Edinburgh-specific operating assumptions. Map framing and labels derive from the package. A differently shaped synthetic airport completes both flight cycles and runs the shared UI in tests. Edinburgh's geometry bytes and all archived save continuations remain unchanged. Strict type checking still covers domain contracts, traffic geometry and compile-time tests, not the entire JavaScript engine/UI. Runtime package/save validation is independent of static types. Multiple runways, general save migrations, tab ownership and fixed-step timing remain future work.
 
 ## Data
 
 Map data: [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), downloaded 2026-09-20 from the [OSM map API](https://api.openstreetmap.org/api/0.6/map?bbox=-3.405,55.930,-3.332,55.969). The derived airport database is provided in `dist/data/egph.json` under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Coordinates are a local equirectangular projection in metres around 55.95 N, 3.372 W. No map tiles or third-party services are requested at runtime.
 
-Airport ingestion is reproducible with `node scripts/import-airport.mjs /path/to/egph.osm`. The importer preserves OSM way/node identities, retains the connected ground network, combines runway sections for the full runway extent, uses mapped D1 for hold-short, and selects an actual runway/taxiway junction for arrival rollout and exit. Named OSM holding nodes on the non-runway network are available as instructed clearance limits; aircraft do not stop at every one unless instructed. This use of mapped points is game logic, not a reproduction of all Edinburgh procedures.
+Airport ingestion now requires explicit metadata and operational connections: `node scripts/import-airport.mjs /path/to/source.osm data/airports/egph/import.json /path/to/new-candidate.json`. It validates a candidate without overwriting existing files or guessing runway exits. The original Edinburgh data reimports byte-for-byte unchanged. See [Airport Packages](data/airports/README.md) for configuration, validation, provenance and save compatibility. Named holding points are instructed clearance limits; aircraft do not stop at every mapped point automatically. Simulated operations are not a reproduction of certified local procedures.
 
 ## Development
 
-Use Node 22+ and `npm ci`, then `npm run verify`. Verification cleans/rebuilds `dist/`, checks packaged output and types, runs unit/archived-save tests and all three browser suites (including offline play). Browser verification needs installed Google Chrome by default and manages its own temporary server on an available port. `npm test` runs unit tests alone; `npm run test:browser` runs browser tests against the most recent build. Set `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` to override browser channel, an existing preview URL or the default ignored `test-results/` artifact directory. Tests use isolated browser contexts, never your personal saves.
+Use Node 22+ and `npm ci`, then `npm run verify`. Verification cleans/rebuilds `dist/`, checks packaged output and types, runs unit/archived-save tests and all four browser suites (including offline play). Browser verification needs installed Google Chrome by default and manages its own temporary server on an available port. `npm test` runs unit tests alone; `npm run test:browser` runs browser tests against the most recent build. Set `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` to override browser channel, an existing preview URL or the default ignored `test-results/` artifact directory. Tests use isolated browser contexts, never your personal saves.
 
 For interactive preview, run `npm run dev` after building, then open `http://localhost:4173`. If that port is occupied, use `npx http-server dist -p 4174 -c-1` instead. `npm run format:check` checks source formatting. `npm run benchmark` records simulation/draw/save timings separately from correctness checks. Frozen references and measurement caveats are in [tests/baselines/README.md](tests/baselines/README.md).
 
