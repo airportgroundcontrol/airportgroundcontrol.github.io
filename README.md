@@ -2,6 +2,8 @@
 
 A browser-only playable MVP on Edinburgh Airport's actual OpenStreetMap geometry.
 
+Continuing from another account or a fresh task? Start with [CONTINUE_HERE.md](CONTINUE_HERE.md). Planned architecture and feature work lives in [ROADMAP.md](ROADMAP.md); [AGENTS.md](AGENTS.md) preserves project instructions for coding agents.
+
 Open **Ground Control.html** directly in a browser. The map, icons, pathfinding and simulation are bundled; the game works without a server or internet connection. The `dist` folder is the equivalent static website.
 
 ## Play
