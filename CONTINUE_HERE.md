@@ -51,12 +51,13 @@ npm run typecheck
 npm run format:check
 ```
 
-The browser runner owns a temporary server on an available port and closes its browsers/server on completion or failure. It uses installed Chrome by default and saves screenshots in ignored `test-results/`. Override `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` when needed. If preview port 4173 is occupied, use `npm run dev -- -p 4174` rather than terminating another project's process. Browser tests do not need that preview server.
+The browser runner owns a temporary server on an available port and closes its browsers/server on completion or failure. It uses installed Chrome by default and saves screenshots in ignored `test-results/`. Override `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` when needed. If preview port 4173 is occupied, use `npx http-server dist -p 4174 -c-1` rather than terminating another project's process. Browser tests do not need that preview server.
 
 ## Current State
 
 - First architecture package: baseline commit `c811f0d`, dedicated mechanical-format commit `1a85858`, followed by source-layout/type-contract work. Use `git log -3 --oneline` for exact current checkpoints; original gameplay baseline is `fb7b28f85f486d62a2cb5040ccc13e3dc212aa25`.
 - Verification now covers 55 unit/fixture tests, strict initial type checks, build/offline packaging checks and all three browser suites, including five responsive viewports and offline save/reload. Archived v1 saves and performance/visual references are under `tests/fixtures/v1/` and `tests/baselines/`.
+- Implementation checkpoint `a29e7ee` was also exported into a fresh directory and passed `npm ci` plus `npm run verify` without existing `dist/` or dependencies. A deliberately invalid browser-test URL exited with failure and cleaned up, as expected. Source formatting checks pass.
 - Gameplay: endless Edinburgh arrivals/departures, pushback, graph taxi routing, holds, follow/give-way, runway entry/takeoff, grouping and subtle request pulses.
 - Persistence: localStorage per airport, versioned/validated snapshots, save on commands, periodic autosave, restore of simulation and view state. No elapsed-time catch-up while closed.
 - Current limits: one airport/active runway; simplified separation and aircraft physics; no stop-bar simulation, multiplayer, account sync or save export/import.
