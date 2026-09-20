@@ -48,7 +48,10 @@ export class AirportMap {
     const labels=[];for(const p of this.sim.planes.filter(p=>p.state!=='done').sort((a,b)=>(b.id===this.selected)-(a.id===this.selected))){const s=this.screen(p);if(s.x< -100||s.x>this.width+100||s.y< -100||s.y>this.height+100)continue;const selected=p.id===this.selected;const color=p.blocked?'#f38f75':p.direction==='arrival'?'#c2c4ff':'#f4d672';
       if(selected){c.beginPath();c.arc(s.x,s.y,18,0,Math.PI*2);c.fillStyle='#132e2366';c.fill();c.strokeStyle='#c6ead6aa';c.lineWidth=1;c.stroke();}
       c.save();c.translate(s.x,s.y);c.rotate(p.angle);c.fillStyle=color;c.strokeStyle='#243a30';c.lineWidth=1.3;c.beginPath();c.moveTo(12,0);c.quadraticCurveTo(10,-2,3,-2);c.lineTo(-3,-11);c.lineTo(-6,-11);c.lineTo(-3,-2);c.lineTo(-9,-2);c.lineTo(-12,-5);c.lineTo(-14,-5);c.lineTo(-12,0);c.lineTo(-14,5);c.lineTo(-12,5);c.lineTo(-9,2);c.lineTo(-3,2);c.lineTo(-6,11);c.lineTo(-3,11);c.lineTo(3,2);c.quadraticCurveTo(10,2,12,0);c.closePath();c.fill();c.stroke();c.restore();
-      let y=s.y-25;let tries=0;while(labels.some(l=>Math.abs(l.x-s.x)<85&&Math.abs(l.y-y)<28)&&tries++<5)y-=28;if(s.x>this.width-175&&y<100)y=s.y+30;labels.push({x:s.x,y});this.label(p.call,s.x,y,color,10,selected?'#182e25f0':'#223b2ee8');if(selected&&z>.2)this.label(p.blocked?'TRAFFIC HOLD':`${Math.round(p.speed*1.944)} KT`,s.x,y-14,'#bcd0c4',8);
+      const candidates=[{x:s.x,y:s.y-25},{x:s.x,y:s.y+33},{x:s.x+65,y:s.y+3},{x:s.x-65,y:s.y+3},{x:s.x,y:s.y-56}];
+      const label=candidates.find(n=>n.x>42&&n.x<this.width-42&&n.y>20&&!(n.x>this.width-175&&n.y<100)&&!labels.some(l=>Math.abs(l.x-n.x)<85&&Math.abs(l.y-n.y)<28))||candidates[1];
+      labels.push(label);if(label!==candidates[0]){c.strokeStyle=color+'77';c.lineWidth=.7;c.beginPath();c.moveTo(s.x,s.y);c.lineTo(label.x,label.y-4);c.stroke();}
+      this.label(p.call,label.x,label.y,color,10,selected?'#182e25f0':'#223b2ee8');if(selected&&z>.2)this.label(p.blocked?'TRAFFIC HOLD':`${Math.round(p.speed*1.944)} KT`,label.x,label.y-14,'#bcd0c4',8);
     }
   }
 }
