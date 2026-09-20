@@ -1,0 +1,37 @@
+import { chromium } from 'playwright';
+import assert from 'node:assert/strict';
+import { pathToFileURL } from 'node:url';
+import path from 'node:path';
+const browser=await chromium.launch({channel:'chrome',headless:true});
+const page=await browser.newPage({viewport:{width:1440,height:960}});
+const errors=[];page.on('pageerror',e=>errors.push(e.message));
+await page.addInitScript(()=>{document.modelContext={registerTool(tool){(window.registeredTools??={})[tool.name]=tool;}};});
+await page.goto('http://127.0.0.1:4173');await page.waitForFunction(()=>window.groundControl);
+await page.evaluate(()=>{groundControl.setPaused(true);groundControl.sim.nextArrival=Infinity;groundControl.sim.nextDeparture=Infinity;});
+const advance=async(id,state)=>{const result=await page.evaluate(({id,state})=>{const s=groundControl.sim;for(let i=0;i<8000&&s.planes.find(p=>p.id===id).state!==state;i++)s.tick(.1);return s.planes.find(p=>p.id===id).state;},{id,state});assert.equal(result,state);};
+await page.getByRole('button',{name:'Approve pushback'}).click();await advance(1,'ready');
+await page.getByRole('button',{name:'Plan taxi route'}).click();
+assert.ok(await page.evaluate(()=>groundControl.map.preview.length>10));
+await page.screenshot({path:'../work/desktop-route.png'});
+await page.getByRole('button',{name:'Issue taxi clearance'}).click();await advance(1,'holding');
+await page.getByRole('button',{name:'Line up & wait'}).click();await advance(1,'linedup');
+await page.getByRole('button',{name:'Select KLM927'}).click();
+assert.equal(await page.getByRole('button',{name:'Clear to land'}).isDisabled(),true);
+await page.evaluate(()=>groundControl.select(1));await page.getByRole('button',{name:'Cleared for takeoff'}).click();await advance(1,'done');
+await page.getByRole('button',{name:'Select KLM927'}).click();await page.getByRole('button',{name:'Clear to land'}).click();await advance(4,'inbound');
+await page.getByLabel('DESTINATION STAND').selectOption('5');await page.getByRole('button',{name:'Plan taxi route'}).click();await page.getByRole('button',{name:'Issue taxi clearance'}).click();await advance(4,'parked');
+assert.equal(await page.evaluate(()=>groundControl.sim.completed),2);
+const before=await page.evaluate(()=>groundControl.map.camera.zoom);await page.getByRole('button',{name:'Zoom in',exact:true}).click();assert.ok(await page.evaluate(()=>groundControl.map.camera.zoom)>before);await page.getByRole('button',{name:'Fit airport'}).click();
+await page.getByRole('button',{name:'EGPH Edinburgh'}).click();assert.equal(await page.locator('#airport-dialog').isVisible(),true);await page.getByRole('button',{name:'Close airport catalog'}).click();
+const tools=await page.evaluate(()=>Object.keys(window.registeredTools));assert.deepEqual(tools,['read_ground_control','issue_ground_clearance']);
+assert.ok(await page.evaluate(()=>registeredTools.read_ground_control.execute({}).completed===2));
+assert.equal(await page.evaluate(()=>registeredTools.issue_ground_clearance.execute({flightId:2,action:'pushback'}).ok),true);
+assert.equal(await page.evaluate(()=>{try{registeredTools.issue_ground_clearance.execute({flightId:'bad',action:'taxi'});return false;}catch{return true;}}),true);
+await page.getByRole('button',{name:'New shift',exact:true}).click();await page.getByRole('button',{name:'New shift',exact:true}).last().click();
+await page.evaluate(()=>groundControl.setPaused(true));
+for(const viewport of [{width:1440,height:960},{width:1280,height:800},{width:390,height:844},{width:768,height:1024}]){
+  await page.setViewportSize(viewport);await page.getByRole('button',{name:'Fit airport'}).click();await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve))));await page.screenshot({path:`../work/viewport-${viewport.width}.png`,fullPage:true});
+  const metrics=await page.evaluate(()=>{const c=document.querySelector('canvas'),d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;const colors=new Set();for(let i=0;i<d.length;i+=400)colors.add(`${d[i]},${d[i+1]},${d[i+2]}`);return{width:innerWidth,scroll:document.documentElement.scrollWidth,colors:colors.size};});assert.equal(metrics.scroll,metrics.width);assert.ok(metrics.colors>20,JSON.stringify(metrics));
+}
+const offline=await browser.newPage({viewport:{width:1280,height:800}});await offline.context().setOffline(true);await offline.goto(pathToFileURL(path.resolve('Ground Control.html')).href);await offline.waitForFunction(()=>window.groundControl);assert.equal(await offline.evaluate(()=>groundControl.sim.planes.length),4);
+assert.deepEqual(errors,[]);console.log('PASS: full arrival/departure UI, runway lock, route preview, zoom, catalog, restart, WebMCP actions, four responsive viewports, nonblank canvas and offline file.');await browser.close();
