@@ -7,7 +7,7 @@ This project can be developed from a fresh Codex task or another account without
 1. Sign in to the desired account using the app's supported sign-in flow. No login files or account tokens need to be copied.
 2. Add/open this existing local folder as the task's main project folder:
 
-   `/Users/marco/Documents/Codex/2026-09-20/i-w/outputs`
+   `/Users/marco/Documents/Github/airportgroundcontrol`
 
 3. Start a task with: **"Continue the Ground Control game in this folder. Read AGENTS.md, CONTINUE_HERE.md, ROADMAP.md and README.md first. Summarize the current state and help me choose the next roadmap item. Preserve existing saves and keep the game browser-only."**
 4. Check `git status` before editing. Do not run two coding sessions against the same checkout simultaneously.
