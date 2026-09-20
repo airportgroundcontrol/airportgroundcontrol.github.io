@@ -1,6 +1,6 @@
 import { createIcons, Plane, ChevronDown, Pause, Play, RotateCcw, Sun, Plus, Minus, Scan, Tags, Navigation2, X, Check, Download, CornerDownLeft, PlaneLanding, Undo2, ArrowUpRight, PlaneTakeoff, Route, Keyboard, PanelRight } from 'lucide';
 import airportData from '../dist/data/egph.json';
-import { GroundSim, statusNames, requestsAction, orderedFlights } from './sim.js';
+import { GroundSim, flightStatus, requestsAction, orderedFlights, groupedFlights } from './sim.js';
 import { AirportMap } from './map.js';
 
 const $ = id => document.getElementById(id);
@@ -8,13 +8,14 @@ const icon = name => '<i data-lucide="' + name + '"></i>';
 const icons = { Plane, ChevronDown, Pause, Play, RotateCcw, Sun, Plus, Minus, Scan, Tags, Navigation2, X, Check, Download, CornerDownLeft, PlaneLanding, Undo2, ArrowUpRight, PlaneTakeoff, Route, Keyboard, PanelRight };
 const refreshIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.7 } });
 const formatTime = t => new Date((8 * 3600 + Math.floor(t)) * 1000).toISOString().slice(11, 19);
-const shortcuts = { p: 'pushback', t: 'preview', h: 'hold', l: 'land', u: 'lineup', d: 'takeoff', g: 'goaround', Enter: 'taxi' };
+const shortcuts = { p: 'pushback', t: 'preview', h: 'hold', l: 'land', u: 'lineup', d: 'takeoff', g: 'goaround', b: 'holdingpoint', s: 'holdshort', y: 'follow', w: 'giveway', c: 'continue', x: 'canceltraffic', Enter: 'taxi' };
 let sim, map, selected = 1, speed = 4, paused = false, filter = 'all';
 let planning = false, waypoints = [], destination = '', menuOpen = false, menuAnchor = null;
 let lastMenu = '', lastStrips = '', lastLogs = '', toastTimer, modalPaused = null;
+let menuMode = '', menuChoice = '';
 const selectedPlane = () => sim?.planes.find(p => p.id === selected);
-const canPlan = p => p && (['ready', 'inbound'].includes(p.state) || (['taxi', 'taxiin'].includes(p.state) && p.held));
-const stateText = p => p.blocked ? 'Traffic ahead / holding' : p.held ? 'Holding position' : statusNames[p.state];
+const canPlan = p => p && (['ready', 'inbound', 'atpoint', 'holding'].includes(p.state) || (['taxi', 'taxiin'].includes(p.state) && p.held));
+const stateText = flightStatus;
 
 function toast(message) {
   $('toast').textContent = message;
@@ -28,6 +29,8 @@ function clearPlan() {
 }
 function closeMenu(cancelPlan = false) {
   menuOpen = false;
+  menuMode = ''; menuChoice = '';
+  if (map) map.focusHold = null;
   $('aircraft-menu').hidden = true;
   document.body.classList.remove('context-open');
   if (cancelPlan) { clearPlan(); render(); }
@@ -60,7 +63,7 @@ function usableWidth() {
 function select(id, anchor) {
   const p = sim.planes.find(p => p.id === id && p.state !== 'done');
   if (!p) return;
-  if (selected !== id) clearPlan();
+  if (selected !== id) { clearPlan(); menuMode = ''; menuChoice = ''; }
   selected = id;
   map.selected = id;
   menuOpen = true;
@@ -110,20 +113,54 @@ function options(p) {
     action('land', 'Clear to land / 24', 'plane-landing', 'L', true, !!sim.runwayOwner),
     action('goaround', 'Go around', 'undo-2', 'G')
   ];
-  if (p.state === 'holding') return [action('lineup', 'Line up & wait / 24', 'arrow-up-right', 'U', true, !!sim.runwayOwner)];
   if (p.state === 'linedup') return [action('takeoff', 'Cleared for takeoff', 'plane-takeoff', 'D', true)];
   const actions = [];
+  if (p.state === 'holding') actions.push(action('lineup', 'Line up & wait / 24', 'arrow-up-right', 'U', true, !!sim.runwayOwner));
+  if (p.holdReached) actions.push(action('continue', 'Continue taxi', 'play', 'C', true));
   if (canPlan(p)) {
     actions.push(action('preview', planning ? 'Update taxi route' : 'Plan taxi route', 'route', 'T', !planning));
+    actions.push(action('holdingpoint', 'Taxi to holding point', 'navigation-2', 'B'));
     if (planning) actions.push(action('taxi', 'Issue taxi clearance', 'check', 'Enter', true, map.preview.length < 2));
   }
-  if (['pushback', 'taxi', 'taxiin'].includes(p.state)) actions.push(action('hold', p.held ? 'Resume movement' : 'Hold position', p.held ? 'play' : 'pause', 'H'));
+  if (['taxi', 'taxiin'].includes(p.state) && !p.holdReached) {
+    actions.push(action('holdshort', 'Hold short of...', 'pause', 'S'));
+    actions.push(action('follow', 'Follow...', 'route', 'Y'));
+    actions.push(action('giveway', 'Give way to...', 'corner-down-left', 'W'));
+  }
+  if (p.trafficOrder) actions.push(action('canceltraffic', 'Cancel traffic instruction', 'x', 'X'));
+  if (['pushback', 'taxi', 'taxiin'].includes(p.state) && !p.holdReached) actions.push(action('hold', p.held ? 'Resume movement' : 'Hold position', p.held ? 'play' : 'pause', 'H'));
   return actions;
 }
+function instructionChoices(p, mode) {
+  if (mode === 'holdingpoint') return sim.holdingPoints().filter(n => n.id !== p.node && sim.plan(p, n.id).length >= 2).map(n => ({ id: n.id, label: n.ref, node: n }));
+  if (mode === 'holdshort') return sim.holdOptions(p);
+  return sim.trafficCandidates(p, mode).map(q => ({ id: String(q.id), label: q.call }));
+}
+function execute(action, payload) {
+  const result = sim.command(selected, action, payload);
+  if (!result.ok) { toast(result.message); return; }
+  clearPlan(); closeMenu();
+  $('map').focus({ preventScroll: true });
+  lastMenu = ''; render();
+}
 function issue(action) {
+  if (action === 'back') { menuMode = ''; menuChoice = ''; map.focusHold = null; lastMenu = ''; render(); return; }
+  if (action === 'confirm' && menuMode) {
+    if (!instructionChoices(selectedPlane(), menuMode).some(c => c.id === menuChoice)) { toast('That instruction is no longer available.'); return; }
+    execute(menuMode === 'holdingpoint' ? 'taxi' : menuMode, { holdingPoint: menuMode === 'holdingpoint' ? menuChoice : undefined, holdPoint: menuChoice, targetId: Number(menuChoice), waypoints });
+    return;
+  }
   const p = selectedPlane(), option = options(p).find(a => a.id === action);
   if (!option) { toast(p ? 'That action is unavailable: ' + stateText(p) + '.' : 'Select an aircraft first.'); return; }
   if (option.disabled) { toast(action === 'taxi' ? 'A valid taxi route is required.' : 'Runway occupied. Hold position.'); return; }
+  if (['holdingpoint', 'holdshort', 'follow', 'giveway'].includes(action)) {
+    if (!menuOpen) select(selected);
+    menuMode = action;
+    menuChoice = instructionChoices(p, action)[0]?.id || '';
+    lastMenu = ''; render();
+    $('aircraft-menu').focus({ preventScroll: true });
+    return;
+  }
   if (action === 'preview') {
     if (!menuOpen) select(selected);
     preview();
@@ -133,18 +170,21 @@ function issue(action) {
     }
     return;
   }
-  const result = sim.command(selected, action, { stand: destination, waypoints });
-  if (!result.ok) { toast(result.message); return; }
-  clearPlan();
-  closeMenu();
-  $('map').focus({ preventScroll: true });
-  lastMenu = '';
-  render();
+  execute(action, { stand: destination, waypoints });
 }
 function menuHTML(p) {
+  if (menuMode) {
+    const titles = { holdingpoint: 'Taxi to holding point', holdshort: 'Hold short of', follow: 'Follow aircraft', giveway: 'Give way to aircraft' };
+    const choices = instructionChoices(p, menuMode);
+    if (!choices.some(c => c.id === menuChoice)) menuChoice = '';
+    map.focusHold = choices.find(c => c.id === menuChoice)?.node || null;
+    return '<div class="instruction-picker"><button class="icon-button" data-action="back" title="Back" aria-label="Back to actions">' + icon('undo-2') + '</button><label for="instruction-select">' + titles[menuMode] + '</label>' + (choices.length ? '<select id="instruction-select"><option value="" disabled' + (!menuChoice ? ' selected' : '') + '>Choose a target</option>' + choices.map(c => '<option value="' + c.id + '"' + (c.id === menuChoice ? ' selected' : '') + '>' + c.label + '</option>').join('') + '</select>' : '<p>No compatible ' + (['follow', 'giveway'].includes(menuMode) ? 'traffic' : 'holding points') + ' ahead.</p>') + '</div><div class="menu-actions" role="menu" aria-label="Clearances for ' + p.call + '"><button role="menuitem" class="menu-action primary-action" data-action="confirm"' + (!menuChoice ? ' disabled' : '') + '>' + icon('check') + '<span class="action-label">' + (menuMode === 'holdingpoint' ? 'Clear taxi' : 'Issue instruction') + '</span><kbd>Enter</kbd></button></div>';
+  }
   const arriving = p.direction === 'arrival';
   const actions = options(p);
   let content = '';
+  if (p.holdLimit) content += '<div class="route-summary">Hold short: ' + p.holdLimit.label + '</div>';
+  if (p.trafficOrder) content += '<div class="route-summary">' + (p.trafficOrder.kind === 'follow' ? 'Follow ' : 'Give way to ') + (sim.planes.find(q => q.id === p.trafficOrder.targetId)?.call || 'traffic') + '</div>';
   if (canPlan(p) && arriving) {
     const choices = sim.data.stands.map(s => {
       const occupied = sim.planes.some(q => q.id !== p.id && q.stand === s.id && q.state !== 'done');
@@ -181,6 +221,7 @@ function render() {
       menu.innerHTML = html; lastMenu = html;
       menu.querySelectorAll('[data-action]').forEach(b => b.onclick = () => issue(b.dataset.action));
       if ($('stand-select')) $('stand-select').onchange = e => { destination = e.target.value; if (planning) preview(); };
+      if ($('instruction-select')) $('instruction-select').onchange = e => { menuChoice = e.target.value; lastMenu = ''; render(); };
       if (focusedAction) (menu.querySelector('[data-action="' + focusedAction + '"]') || menu).focus({ preventScroll: true });
       else if (focusedId && $(focusedId)) $(focusedId).focus({ preventScroll: true });
       refreshIcons();
@@ -191,8 +232,10 @@ function render() {
   const pending = planes.filter(requestsAction).length;
   $('traffic-count').textContent = String(planes.length).padStart(2, '0');
   $('pending').textContent = pending + (pending === 1 ? ' request' : ' requests');
-  const strips = planes.filter(p => filter === 'all' || p.direction === filter).map(p =>
-    '<button class="strip ' + p.direction + (p.id === selected ? ' selected' : '') + (requestsAction(p) ? ' request' : '') + '" data-flight="' + p.id + '" aria-label="Select ' + p.call + '"><span class="strip-top">' + icon(p.direction === 'arrival' ? 'plane-landing' : 'plane-takeoff') + '<span class="strip-call">' + p.call + '</span></span><span class="strip-meta">' + p.type + ' / ' + (p.stand ? 'S' + p.stand : '24') + '</span><span class="strip-status"><span>' + stateText(p) + '</span>' + (requestsAction(p) ? '<strong>REQ</strong>' : '') + '</span></button>'
+  const strips = groupedFlights(planes.filter(p => filter === 'all' || p.direction === filter)).map(group =>
+    '<section class="flight-group' + (group.request ? ' request-group' : '') + '" aria-label="' + group.label + '"><h3><span>' + group.label + '</span><span class="group-count">' + group.planes.length + '</span></h3>' + group.planes.map(p =>
+      '<button class="strip ' + p.direction + (p.id === selected ? ' selected' : '') + (requestsAction(p) ? ' request' : '') + '" data-flight="' + p.id + '" aria-label="Select ' + p.call + '"><span class="strip-top">' + icon(p.direction === 'arrival' ? 'plane-landing' : 'plane-takeoff') + '<span class="strip-call">' + p.call + '</span></span><span class="strip-meta">' + p.type + ' / ' + (p.holdLimit ? p.holdLimit.label : p.holdLabel && p.state === 'atpoint' ? p.holdLabel : p.stand ? 'S' + p.stand : '24') + '</span></button>'
+    ).join('') + '</section>'
   ).join('') || '<div class="empty">No flights in this queue.</div>';
   if (strips !== lastStrips) {
     const focusedId = $('strips').contains(document.activeElement) ? document.activeElement.dataset.flight : null;
@@ -269,6 +312,8 @@ document.addEventListener('keydown', e => {
   }
   const action = shortcuts[key];
   if (!action) return;
+  if (key === 'Enter' && target.matches('button')) return;
+  if (key === 'Enter' && menuMode) { e.preventDefault(); issue('confirm'); return; }
   if (key === 'Enter' && (!planning || target.closest('.topbar,.control-panel'))) return;
   e.preventDefault(); issue(action);
 });
@@ -292,7 +337,7 @@ async function start() {
     render();
     window.groundControl = { sim, map, select, issue, preview, setPaused: pause, getState: () => ({
       time: sim.time, score: sim.score, completed: sim.completed, runway: sim.runwayOwner,
-      flights: sim.planes.map(({ id, call, state, x, y, stand }) => ({ id, call, state, x, y, stand }))
+      flights: sim.planes.map(({ id, call, state, x, y, stand, held, holdLimit, holdReached, trafficOrder, trafficWaiting }) => ({ id, call, state, x, y, stand, held, holdLimit, holdReached, trafficOrder, trafficWaiting }))
     }) };
     const context = document.modelContext;
     if (context?.registerTool) {
@@ -300,9 +345,11 @@ async function start() {
       window.addEventListener('pagehide', () => controller.abort(), { once: true });
       const tools = [
         { name: 'read_ground_control', description: 'Read the airport simulation and flight states.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true }, execute: () => window.groundControl.getState() },
-        { name: 'issue_ground_clearance', description: 'Issue a clearance to an aircraft using the same rules as the context menu.', inputSchema: { type: 'object', properties: { flightId: { type: 'integer' }, action: { type: 'string', enum: ['pushback','hold','taxi','lineup','takeoff','land','goaround'] }, stand: { type: 'string' } }, required: ['flightId','action'], additionalProperties: false }, annotations: { readOnlyHint: false }, execute: input => {
+        { name: 'issue_ground_clearance', description: 'Issue a clearance to an aircraft using the same rules as the context menu.', inputSchema: { type: 'object', properties: { flightId: { type: 'integer' }, action: { type: 'string', enum: ['pushback','hold','taxi','lineup','takeoff','land','goaround','holdshort','follow','giveway','continue','canceltraffic'] }, stand: { type: 'string' }, holdingPoint: { type: 'string' }, holdPoint: { type: 'string' }, targetId: { type: 'integer' } }, required: ['flightId','action'], additionalProperties: false }, annotations: { readOnlyHint: false }, execute: input => {
           if (!Number.isInteger(input.flightId) || typeof input.action !== 'string') throw new Error('Invalid clearance');
-          const result = sim.command(input.flightId, input.action, { stand: input.stand }); render(); return result;
+          const result = sim.command(input.flightId, input.action, input);
+          if (result.ok && input.flightId === selected) { clearPlan(); closeMenu(); }
+          render(); return result;
         } }
       ];
       for (const tool of tools) { try { Promise.resolve(context.registerTool(tool, { signal: controller.signal })).catch(() => {}); } catch {} }

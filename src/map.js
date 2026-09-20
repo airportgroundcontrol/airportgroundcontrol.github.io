@@ -1,4 +1,4 @@
-import { distance } from './sim.js';
+import { distance, requestsAction } from './sim.js';
 export class AirportMap {
   constructor(canvas,sim,onSelect,onWaypoint,onDismiss=()=>{}){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.sim=sim;this.selected=1;this.preview=[];this.waypoints=[];this.labels=true;this.camera={x:0,y:0,zoom:1};this.onSelect=onSelect;this.onWaypoint=onWaypoint;this.onDismiss=onDismiss;this.pointers=new Map();
     new ResizeObserver(()=>this.resize()).observe(canvas);this.bind();this.resize();
@@ -23,6 +23,7 @@ export class AirportMap {
   polygon(points,fill,stroke){const c=this.ctx;c.beginPath();points.forEach((point,i)=>{const p=this.screen({x:point[0],y:point[1]});if(!i)c.moveTo(p.x,p.y);else c.lineTo(p.x,p.y);});c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke();}}
   label(text,x,y,color='#d3decb',size=10,bg){const c=this.ctx;c.font=`${size}px ui-monospace, monospace`;c.textAlign='center';if(bg){const w=c.measureText(text).width;c.fillStyle=bg;c.fillRect(x-w/2-5,y-size, w+10,size+6);}c.fillStyle=color;c.fillText(text,x,y);}
   draw(){const c=this.ctx,z=this.camera.zoom;c.clearRect(0,0,this.width,this.height);c.fillStyle='#111e1b';c.fillRect(0,0,this.width,this.height);c.lineJoin='round';c.lineCap='round';
+    const pulse=window.matchMedia('(prefers-reduced-motion: reduce)').matches ? .35 : (1-Math.cos(performance.now()*Math.PI*2/3000))/2;
     const grid=250;const tl=this.world(0,0),br=this.world(this.width,this.height);for(let x=Math.floor(tl.x/grid)*grid;x<br.x;x+=grid)this.line([{x,y:tl.y},{x,y:br.y}],'#3e53433b',.6);for(let y=Math.floor(tl.y/grid)*grid;y<br.y;y+=grid)this.line([{x:tl.x,y},{x:br.x,y}],'#3e53433b',.6);
     const fs=this.sim.data.features;
     for(const f of fs)if(f.type==='aerodrome')this.polygon(f.points,'#1c3027','#3c5040');
@@ -42,11 +43,20 @@ export class AirportMap {
       for(const s of this.sim.data.stands){if(z<.2&&s.id!==selectedStand)continue;if(z>=.2&&z<.4&&+s.id%2!==0)continue;const p=this.screen(this.sim.nodes.get(s.node));const busy=this.sim.planes.some(q=>q.stand===s.id&&q.state!=='done');this.label(s.id,p.x,p.y+15,busy?'#ecd179':'#cbd5c4',Math.max(8,Math.min(12,15*z)));}
       if(z>=.2){const t=this.screen({x:550,y:270});this.label('TERMINAL',t.x,t.y,'#bccbb7',10);}const a=this.screen({x:-650,y:-100});this.label('RWY 06 / 24',a.x,a.y,'#85997d',10);
     }
-    const hold=this.screen(this.sim.nodes.get(this.sim.data.departureHold));c.strokeStyle='#f9c55d';c.lineWidth=3;c.beginPath();c.moveTo(hold.x-5,hold.y-3);c.lineTo(hold.x+5,hold.y+3);c.stroke();this.label('D1',hold.x+12,hold.y+17,'#f1d47a',10,'#293e31');
+    const selectedPlane=this.sim.planes.find(p=>p.id===this.selected);
+    const routeHolds=new Set([...this.preview,...(selectedPlane?.route||[])].filter(n=>n.hold).map(n=>n.id));
+    const holdLabels=[];
+    for(const n of this.sim.holdingPoints()){
+      const point=this.screen(n),focused=this.focusHold?.id===n.id||selectedPlane?.holdLimit?.node?.id===n.id;
+      c.strokeStyle=focused?'#ffec9c':'#dfbd62';c.lineWidth=focused?4:2;c.beginPath();c.moveTo(point.x-4,point.y-2);c.lineTo(point.x+4,point.y+2);c.stroke();
+      if(focused){c.beginPath();c.arc(point.x,point.y,12,0,Math.PI*2);c.stroke();}
+      if(focused||n.id===this.sim.data.departureHold||((z>.65||routeHolds.has(n.id))&&!holdLabels.some(p=>distance(p,point)<32))){this.label(n.ref,point.x+10,point.y+16,'#f1d47a',9,'#293e31');holdLabels.push(point);}
+    }
     for(const p of this.sim.planes)if(p.route.length)this.line([p,...p.route],p.id===this.selected?'#85f0cf':'#8bd4ae70',p.id===this.selected?2.4:1.2,[6,5]);
     if(this.preview.length){this.line(this.preview,'#a5f6df',3);this.line(this.preview,'#1f9679',1,[5,6]);}
     for(const [i,id] of this.waypoints.entries()){const p=this.screen(this.sim.nodes.get(id));c.beginPath();c.arc(p.x,p.y,8,0,Math.PI*2);c.fillStyle='#a5f6df';c.fill();this.label(String(i+1),p.x,p.y+3,'#1e4b3c',10);}
     const labels=[];for(const p of this.sim.planes.filter(p=>p.state!=='done').sort((a,b)=>(b.id===this.selected)-(a.id===this.selected))){const s=this.screen(p);if(s.x< -100||s.x>this.width+100||s.y< -100||s.y>this.height+100)continue;const selected=p.id===this.selected;const color=p.blocked?'#f38f75':p.direction==='arrival'?'#c2c4ff':'#f4d672';
+      if(requestsAction(p)){c.save();c.globalAlpha=.12+.15*pulse;c.fillStyle=color;c.beginPath();c.arc(s.x,s.y,20+3*pulse,0,Math.PI*2);c.fill();c.globalAlpha=.28+.22*pulse;c.strokeStyle=color;c.lineWidth=1;c.stroke();c.restore();}
       if(selected){c.beginPath();c.arc(s.x,s.y,18,0,Math.PI*2);c.fillStyle='#132e2366';c.fill();c.strokeStyle='#c6ead6aa';c.lineWidth=1;c.stroke();}
       c.save();c.translate(s.x,s.y);c.rotate(p.angle);c.fillStyle=color;c.strokeStyle='#243a30';c.lineWidth=1.3;c.beginPath();c.moveTo(12,0);c.quadraticCurveTo(10,-2,3,-2);c.lineTo(-3,-11);c.lineTo(-6,-11);c.lineTo(-3,-2);c.lineTo(-9,-2);c.lineTo(-12,-5);c.lineTo(-14,-5);c.lineTo(-12,0);c.lineTo(-14,5);c.lineTo(-12,5);c.lineTo(-9,2);c.lineTo(-3,2);c.lineTo(-6,11);c.lineTo(-3,11);c.lineTo(3,2);c.quadraticCurveTo(10,2,12,0);c.closePath();c.fill();c.stroke();c.restore();
       const candidates=[{x:s.x,y:s.y-25},{x:s.x,y:s.y+33},{x:s.x+65,y:s.y+3},{x:s.x-65,y:s.y+3},{x:s.x,y:s.y-56}];

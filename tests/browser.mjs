@@ -40,7 +40,7 @@ await page.screenshot({ path: '../work/dark-context-desktop.png' });
 await page.keyboard.press('p');
 assert.equal(await state(1), 'pushback');
 assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
-await page.waitForFunction(() => document.querySelector('#strips .strip:last-child')?.dataset.flight === '1');
+await page.waitForFunction(() => [...document.querySelectorAll('#strips .strip')].at(-1)?.dataset.flight === '1');
 await page.keyboard.press('h');
 assert.equal(await page.evaluate(() => groundControl.sim.planes[0].held), true);
 await page.keyboard.press('h');
