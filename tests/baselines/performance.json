@@ -1,0 +1,63 @@
+{
+  "capturedAt": "2026-09-20T12:07:05.801Z",
+  "sourceCommit": "e681385e78f18ebcae483448e6660b5e2f916da6",
+  "platform": "darwin 24.6.0 arm64",
+  "cpu": "Apple M2 Pro",
+  "node": "v22.17.1",
+  "browser": "138.0.7204.158",
+  "viewport": "1440x960 DPR 1, headless",
+  "method": "20 warmups + 100 samples. Tick = 0.1 simulation seconds. Canvas draw measures synchronous submission, not GPU completion or full UI frame time. Save includes capture, JSON and localStorage. Timing is diagnostic, not a test threshold.",
+  "measurements": [
+    {
+      "aircraft": 24,
+      "workload": "24 distinct Edinburgh stands, concurrent pushback",
+      "tick": {
+        "medianMs": 0.09999990463256836,
+        "p95Ms": 0.20000004768371582
+      },
+      "canvasDraw": {
+        "medianMs": 2.6000001430511475,
+        "p95Ms": 3.1000001430511475
+      },
+      "save": {
+        "medianMs": 0,
+        "p95Ms": 0.10000014305114746
+      },
+      "saveBytes": 12690
+    },
+    {
+      "aircraft": 60,
+      "workload": "Synthetic overlapping copies; stress test, not gameplay capacity",
+      "tick": {
+        "medianMs": 0.2999999523162842,
+        "p95Ms": 0.40000009536743164
+      },
+      "canvasDraw": {
+        "medianMs": 2.5999999046325684,
+        "p95Ms": 2.8999998569488525
+      },
+      "save": {
+        "medianMs": 0.09999990463256836,
+        "p95Ms": 0.20000004768371582
+      },
+      "saveBytes": 27795
+    },
+    {
+      "aircraft": 120,
+      "workload": "Synthetic overlapping copies; stress test, not gameplay capacity",
+      "tick": {
+        "medianMs": 1,
+        "p95Ms": 1.1000001430511475
+      },
+      "canvasDraw": {
+        "medianMs": 2.799999952316284,
+        "p95Ms": 3.200000047683716
+      },
+      "save": {
+        "medianMs": 0.20000004768371582,
+        "p95Ms": 0.2999999523162842
+      },
+      "saveBytes": 50924
+    }
+  ]
+}

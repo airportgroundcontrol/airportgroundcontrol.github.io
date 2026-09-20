@@ -1,0 +1,120 @@
+{
+  "version": 1,
+  "airport": "EGPH",
+  "revision": "4c4822e7",
+  "savedAt": 1790000000000,
+  "simulation": {
+    "time": 2.0000000000000004,
+    "score": 0,
+    "completed": 0,
+    "incidents": 0,
+    "nextId": 5,
+    "nextArrival": null,
+    "nextDeparture": null,
+    "nextCleanup": 60,
+    "runwayOwner": null,
+    "planes": [
+      {
+        "id": 1,
+        "call": "BAW1439",
+        "type": "A320",
+        "state": "pushback",
+        "x": 379.2305469708769,
+        "y": 274.1177809426668,
+        "node": "5715751971",
+        "angle": -0.016139020289865396,
+        "stand": "3",
+        "route": [
+          {
+            "id": "5715751970",
+            "x": 284.3,
+            "y": 275.65,
+            "hold": false,
+            "ref": ""
+          }
+        ],
+        "speed": 2.6,
+        "direction": "departure",
+        "wait": 2.0000000000000004,
+        "held": false,
+        "blocked": false,
+        "targetSpeed": 2.6,
+        "trafficWaiting": null,
+        "travelled": 4.199999999999998
+      },
+      {
+        "id": 2,
+        "call": "EZY326",
+        "type": "A320",
+        "state": "gate",
+        "x": 445.06,
+        "y": 115.73,
+        "node": "5715751984",
+        "angle": 1.0204848651642484,
+        "stand": "8",
+        "route": [],
+        "speed": 0,
+        "direction": "departure",
+        "wait": 2.0000000000000004,
+        "held": false,
+        "blocked": false,
+        "trafficWaiting": null
+      },
+      {
+        "id": 3,
+        "call": "RYR6624",
+        "type": "B738",
+        "state": "gate",
+        "x": 820.04,
+        "y": 179.98,
+        "node": "5715751958",
+        "angle": 2.06698209610038,
+        "stand": "20",
+        "route": [],
+        "speed": 0,
+        "direction": "departure",
+        "wait": 2.0000000000000004,
+        "held": false,
+        "blocked": false,
+        "trafficWaiting": null
+      },
+      {
+        "id": 4,
+        "call": "KLM927",
+        "type": "A320",
+        "state": "approach",
+        "x": 1420.5728849132024,
+        "y": -877.6299424386506,
+        "angle": 2.597706857873903,
+        "node": null,
+        "stand": null,
+        "route": [],
+        "speed": 0,
+        "direction": "arrival",
+        "wait": 2.0000000000000004,
+        "held": false,
+        "blocked": false,
+        "trafficWaiting": null
+      }
+    ],
+    "logs": [
+      {
+        "time": 0,
+        "text": "BAW1439, pushback approved, stand 3.",
+        "type": "info"
+      },
+      {
+        "time": 0,
+        "text": "Edinburgh Ground. Runway 24 in use.",
+        "type": "system"
+      },
+      {
+        "time": 0,
+        "text": "KLM927, inbound runway 24. Request landing.",
+        "type": "info"
+      }
+    ],
+    "conflictPairs": []
+  },
+  "ui": {}
+}

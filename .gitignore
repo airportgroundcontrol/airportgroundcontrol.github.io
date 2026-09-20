@@ -2,3 +2,4 @@ node_modules/
 .sites-runtime/
 .DS_Store
 portability/
+test-results/

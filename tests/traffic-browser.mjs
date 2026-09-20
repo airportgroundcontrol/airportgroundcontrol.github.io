@@ -1,9 +1,11 @@
+import { baseURL, browserChannel, artifact } from "./browser-support.mjs";
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ channel: browserChannel, headless: true });
+try {
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 const errors = []; page.on('pageerror', e => errors.push(e.message));
-await page.goto('http://localhost:4173');
+await page.goto(baseURL);
 await page.waitForFunction(() => window.groundControl);
 await page.evaluate(() => { groundControl.setPaused(true); groundControl.sim.nextArrival = groundControl.sim.nextDeparture = Infinity; });
 const select = call => page.getByRole('button', { name: 'Select ' + call }).click();
@@ -27,7 +29,7 @@ assert.equal(await page.locator('.strip.request').first().evaluate(el => getComp
 await page.emulateMedia({ reducedMotion: 'reduce' });
 assert.equal(await page.locator('.strip.request').first().evaluate(el => getComputedStyle(el, '::after').animationName), 'none');
 await page.emulateMedia({ reducedMotion: 'no-preference' });
-await page.screenshot({ path: '../work/grouped-requests-desktop.png' });
+await page.screenshot({ path: artifact("grouped-requests-desktop.png") });
 
 await select('BAW1439'); await page.keyboard.press('p'); await advance(1, 'ready');
 await page.keyboard.press('b');
@@ -37,7 +39,7 @@ assert.equal(await page.locator('#instruction-select').count(), 0);
 await page.keyboard.press('b');
 await page.getByLabel('Taxi to holding point', { exact: true }).selectOption({ label: 'A15' });
 assert.equal(await page.evaluate(() => groundControl.map.focusHold.ref), 'A15');
-await page.screenshot({ path: '../work/holding-point-picker.png' });
+await page.screenshot({ path: artifact("holding-point-picker.png") });
 await action('Clear taxi');
 assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 await advance(1, 'atpoint');
@@ -51,7 +53,7 @@ assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 await advance(1, 'holdReached');
 await select('BAW1439');
 assert.equal(await page.getByRole('menuitem', { name: 'Continue taxi' }).count(), 1);
-await page.screenshot({ path: '../work/onward-clearance.png' });
+await page.screenshot({ path: artifact("onward-clearance.png") });
 await page.keyboard.press('c');
 assert.equal(await page.evaluate(() => groundControl.sim.planes[0].held), false);
 assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
@@ -86,11 +88,13 @@ await page.getByRole('button', { name: 'All flights', exact: true }).click();
 
 await page.setViewportSize({ width: 390, height: 844 });
 await select('BAW1439'); await page.keyboard.press('s');
-await page.screenshot({ path: '../work/holding-picker-mobile.png' });
+await page.screenshot({ path: artifact("holding-picker-mobile.png") });
 const box = await page.locator('#aircraft-menu').boundingBox();
 assert.ok(box.x >= 0 && box.x + box.width <= 390 && box.y >= 104 && box.y + box.height <= 844);
 await page.keyboard.press('Escape');
-await page.screenshot({ path: '../work/grouped-requests-mobile.png' });
+await page.screenshot({ path: artifact("grouped-requests-mobile.png") });
 assert.deepEqual(errors, []);
 console.log('PASS: grouped requests, reduced motion, holding-point and hold-short pickers, onward clearance, follow/give-way commands, keyboard and mouse actions, filters, compact mobile menus.');
-await browser.close();
+} finally {
+  await browser.close();
+}

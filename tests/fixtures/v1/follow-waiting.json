@@ -1,0 +1,99 @@
+{
+  "version": 1,
+  "airport": "EGPH",
+  "revision": "4c4822e7",
+  "savedAt": 1790000000000,
+  "simulation": {
+    "time": 24.60000000000008,
+    "score": 0,
+    "completed": 0,
+    "incidents": 0,
+    "nextId": 103,
+    "nextArrival": null,
+    "nextDeparture": null,
+    "nextCleanup": 60,
+    "runwayOwner": null,
+    "planes": [
+      {
+        "id": 101,
+        "call": "TEST101",
+        "type": "A320",
+        "state": "taxi",
+        "direction": "departure",
+        "x": 139.9542877987034,
+        "y": 1500,
+        "angle": 0,
+        "node": null,
+        "stand": null,
+        "route": [
+          {
+            "x": 1200,
+            "y": 1500
+          }
+        ],
+        "targetSpeed": 8,
+        "speed": 0,
+        "wait": 24.60000000000008,
+        "travelled": 139.9542877987034,
+        "held": false,
+        "blocked": false,
+        "trafficOrder": {
+          "kind": "follow",
+          "targetId": 102,
+          "point": {
+            "x": 200,
+            "y": 1500
+          },
+          "stopAt": 140,
+          "releaseAt": 60,
+          "merged": false
+        },
+        "trafficWaiting": "spacing"
+      },
+      {
+        "id": 102,
+        "call": "TEST102",
+        "type": "A320",
+        "state": "taxi",
+        "direction": "departure",
+        "x": 200,
+        "y": 1500,
+        "angle": 0,
+        "node": null,
+        "stand": null,
+        "route": [
+          {
+            "x": 1200,
+            "y": 1500
+          }
+        ],
+        "targetSpeed": 8,
+        "speed": 0,
+        "wait": 24.60000000000008,
+        "travelled": 0,
+        "held": true,
+        "blocked": false,
+        "trafficWaiting": null
+      }
+    ],
+    "logs": [
+      {
+        "time": 0,
+        "text": "TEST101, follow TEST102.",
+        "type": "info"
+      },
+      {
+        "time": 0,
+        "text": "Edinburgh Ground. Runway 24 in use.",
+        "type": "system"
+      },
+      {
+        "time": 0,
+        "text": "KLM927, inbound runway 24. Request landing.",
+        "type": "info"
+      }
+    ],
+    "conflictPairs": []
+  },
+  "ui": {}
+}

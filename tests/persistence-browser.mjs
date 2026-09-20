@@ -1,12 +1,14 @@
+import { baseURL, browserChannel, artifact } from "./browser-support.mjs";
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ channel: browserChannel, headless: true });
+try {
 const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
 const page = await context.newPage(), errors = [], key = 'ground-control:save:EGPH';
 page.on('pageerror', e => errors.push(e.message));
-await page.goto('http://localhost:4173');
+await page.goto(baseURL);
 await page.waitForFunction(() => window.groundControl);
 await page.evaluate(() => {
   const s = groundControl.sim; groundControl.setPaused(true); s.nextArrival = s.nextDeparture = Infinity;
@@ -41,7 +43,7 @@ await page.evaluate(() => { groundControl.sim.score = 345; });
 await page.waitForFunction(key => JSON.parse(localStorage.getItem(key)).simulation.score === 345, key);
 await page.close();
 const reopened = await context.newPage();
-await reopened.goto('http://localhost:4173'); await reopened.waitForFunction(() => window.groundControl);
+await reopened.goto(baseURL); await reopened.waitForFunction(() => window.groundControl);
 assert.equal(await reopened.evaluate(() => groundControl.sim.score), 345);
 assert.equal(await reopened.evaluate(() => groundControl.sim.time), before.time);
 
@@ -77,14 +79,14 @@ const brokenContext = await browser.newContext();
 await brokenContext.addInitScript(key => {
   if (!sessionStorage.getItem('injected')) { localStorage.setItem(key, '{invalid'); sessionStorage.setItem('injected', 'yes'); }
 }, key);
-const broken = await brokenContext.newPage(); await broken.goto('http://localhost:4173');
+const broken = await brokenContext.newPage(); await broken.goto(baseURL);
 await broken.waitForFunction(() => window.groundControl);
 assert.equal(await broken.evaluate(key => localStorage.getItem(key + ':recovery'), key), '{invalid');
 assert.ok((await broken.locator('#toast').textContent()).includes('could not be restored'));
 
 const blockedContext = await browser.newContext();
 await blockedContext.addInitScript(() => { Storage.prototype.setItem = () => { throw new Error('QuotaExceededError'); }; });
-const blocked = await blockedContext.newPage(); await blocked.goto('http://localhost:4173');
+const blocked = await blockedContext.newPage(); await blocked.goto(baseURL);
 await blocked.waitForFunction(() => window.groundControl);
 assert.ok((await blocked.locator('#toast').textContent()).includes('Saving unavailable'));
 await blocked.getByRole('button', { name: 'Select BAW1439' }).click(); await blocked.keyboard.press('p');
@@ -99,4 +101,6 @@ await offline.reload(); await offline.waitForFunction(() => window.groundControl
 assert.equal(await offline.evaluate(() => groundControl.sim.score), 777);
 assert.deepEqual(errors, []);
 console.log('PASS: reload and tab-close restoration, full flight/runway state, periodic autosave, view preferences, draft route, temporary dialog pause, restart, corrupt/blocked storage, offline HTML persistence.');
-await browser.close();
+} finally {
+  await browser.close();
+}

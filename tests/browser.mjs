@@ -1,14 +1,16 @@
+import { baseURL, browserChannel, artifact } from "./browser-support.mjs";
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await chromium.launch({ channel: browserChannel, headless: true });
+try {
 const page = await browser.newPage({ viewport: { width: 1440, height: 960 } });
 const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 await page.addInitScript(() => { document.modelContext = { registerTool(tool) { (window.registeredTools ??= {})[tool.name] = tool; } }; });
-await page.goto('http://127.0.0.1:4173');
+await page.goto(baseURL);
 await page.waitForFunction(() => window.groundControl);
 await page.evaluate(() => {
   groundControl.setPaused(true);
@@ -36,7 +38,7 @@ assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 await clickAircraft(1);
 assert.equal(await menuAction('Approve pushback').count(), 1);
 assert.equal(await menuAction('Cleared for takeoff').count(), 0);
-await page.screenshot({ path: '../work/dark-context-desktop.png' });
+await page.screenshot({ path: artifact("dark-context-desktop.png") });
 await page.keyboard.press('p');
 assert.equal(await state(1), 'pushback');
 assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
@@ -54,7 +56,7 @@ assert.equal(await page.evaluate(() => groundControl.map.preview.length), 0);
 await page.keyboard.press('t');
 assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 assert.equal(await page.locator('#route-banner').isVisible(), true);
-await page.screenshot({ path: '../work/dark-taxi-preview.png' });
+await page.screenshot({ path: artifact("dark-taxi-preview.png") });
 await page.keyboard.press('Enter');
 assert.equal(await state(1), 'taxi');
 await advance(1, 'holding');
@@ -129,7 +131,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 1280, height: 800
   await page.setViewportSize(viewport);
   await page.getByRole('button', { name: 'Fit airport' }).click();
   await settled();
-  await page.screenshot({ path: '../work/dark-overview-' + viewport.width + '.png' });
+  await page.screenshot({ path: artifact("dark-overview-" + viewport.width + '.png') });
   const metrics = await page.evaluate(() => {
     const canvas = document.querySelector('canvas'), r = canvas.getBoundingClientRect();
     const data = canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
@@ -158,7 +160,7 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 1280, height: 800
   assert.equal(await page.locator('#aircraft-menu h2, #aircraft-menu .plane-type').count(), 0);
   assert.equal(await page.locator('#aircraft-menu').innerText(), 'Approve pushback\nP');
   assert.ok(box.x >= 0 && box.y >= header.height && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, JSON.stringify({ viewport, box }));
-  await page.screenshot({ path: '../work/dark-menu-' + viewport.width + '.png' });
+  await page.screenshot({ path: artifact("dark-menu-" + viewport.width + '.png') });
   await page.keyboard.press('Escape');
   if (viewport.width <= 600) await page.getByRole('button', { name: 'Toggle flight panel' }).click();
 }
@@ -172,4 +174,6 @@ await offline.waitForFunction(() => window.groundControl);
 assert.equal(await offline.evaluate(() => groundControl.sim.planes.length), 4);
 assert.deepEqual(errors, []);
 console.log('PASS: aircraft click/right-click menus, all clearance shortcuts, form/modal guards, request sorting, runway protection, full flight cycles, endless play, full-screen dark map, five responsive viewports, offline game.');
-await browser.close();
+} finally {
+  await browser.close();
+}

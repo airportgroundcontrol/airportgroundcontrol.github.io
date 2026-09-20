@@ -1,0 +1,217 @@
+{
+  "version": 1,
+  "airport": "EGPH",
+  "revision": "4c4822e7",
+  "savedAt": 1790000000000,
+  "simulation": {
+    "time": 209.2999999999924,
+    "score": 0,
+    "completed": 0,
+    "incidents": 0,
+    "nextId": 5,
+    "nextArrival": null,
+    "nextDeparture": null,
+    "nextCleanup": 240.19999999999405,
+    "runwayOwner": 1,
+    "planes": [
+      {
+        "id": 1,
+        "call": "BAW1439",
+        "type": "A320",
+        "state": "lineup",
+        "x": 1084.7590236431001,
+        "y": -574.6264018314871,
+        "node": "12905469629",
+        "angle": -2.113003667830454,
+        "stand": null,
+        "route": [
+          {
+            "id": "7338853462",
+            "x": 1070.19,
+            "y": -598.81,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538158",
+            "x": 1061.83,
+            "y": -612.71,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538161",
+            "x": 1058.15,
+            "y": -618.69,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "4719153908",
+            "x": 1053.67,
+            "y": -623.38,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538154",
+            "x": 1049.12,
+            "y": -626.92,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538156",
+            "x": 1042.2,
+            "y": -630.24,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538144",
+            "x": 1033.68,
+            "y": -632.62,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538150",
+            "x": 1026.18,
+            "y": -632.83,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "4719153909",
+            "x": 1019.9,
+            "y": -631.83,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "4719153910",
+            "x": 1013.98,
+            "y": -629.88,
+            "hold": false,
+            "ref": ""
+          },
+          {
+            "id": "1985538143",
+            "x": 1004.91,
+            "y": -626.28,
+            "hold": false,
+            "ref": ""
+          }
+        ],
+        "speed": 5.999999999999998,
+        "direction": "departure",
+        "wait": 2.0000000000000004,
+        "held": false,
+        "blocked": false,
+        "targetSpeed": 6,
+        "trafficWaiting": null,
+        "travelled": 1444.7057981616645,
+        "trafficOrder": null,
+        "holdLimit": null,
+        "holdReached": false,
+        "taxiTarget": "runway",
+        "holdLabel": null,
+        "destination": "12905469629",
+        "clearance": "E - F - A - D"
+      },
+      {
+        "id": 2,
+        "call": "EZY326",
+        "type": "A320",
+        "state": "gate",
+        "x": 445.06,
+        "y": 115.73,
+        "node": "5715751984",
+        "angle": 1.0204848651642484,
+        "stand": "8",
+        "route": [],
+        "speed": 0,
+        "direction": "departure",
+        "wait": 209.2999999999924,
+        "held": false,
+        "blocked": false,
+        "trafficWaiting": null
+      },
+      {
+        "id": 3,
+        "call": "RYR6624",
+        "type": "B738",
+        "state": "gate",
+        "x": 820.04,
+        "y": 179.98,
+        "node": "5715751958",
+        "angle": 2.06698209610038,
+        "stand": "20",
+        "route": [],
+        "speed": 0,
+        "direction": "departure",
+        "wait": 209.2999999999924,
+        "held": false,
+        "blocked": false,
+        "trafficWaiting": null
+      },
+      {
+        "id": 4,
+        "call": "KLM927",
+        "type": "A320",
+        "state": "approach",
+        "x": 1420.5728849132024,
+        "y": -877.6299424386506,
+        "angle": 2.597706857873903,
+        "node": null,
+        "stand": null,
+        "route": [],
+        "speed": 0,
+        "direction": "arrival",
+        "wait": 209.2999999999924,
+        "held": false,
+        "blocked": false,
+        "trafficWaiting": null
+      }
+    ],
+    "logs": [
+      {
+        "time": 207.2999999999925,
+        "text": "BAW1439, line up and wait runway 24.",
+        "type": "info"
+      },
+      {
+        "time": 207.2999999999925,
+        "text": "BAW1439, holding short D1.",
+        "type": "info"
+      },
+      {
+        "time": 38.60000000000028,
+        "text": "BAW1439, taxi holding point D1, runway 24 via E - F - A - D.",
+        "type": "info"
+      },
+      {
+        "time": 38.60000000000028,
+        "text": "BAW1439, pushback complete. Request taxi.",
+        "type": "info"
+      },
+      {
+        "time": 0,
+        "text": "BAW1439, pushback approved, stand 3.",
+        "type": "info"
+      },
+      {
+        "time": 0,
+        "text": "Edinburgh Ground. Runway 24 in use.",
+        "type": "system"
+      },
+      {
+        "time": 0,
+        "text": "KLM927, inbound runway 24. Request landing.",
+        "type": "info"
+      }
+    ],
+    "conflictPairs": []
+  },
+  "ui": {}
+}
