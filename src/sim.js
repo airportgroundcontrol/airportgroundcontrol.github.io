@@ -3,23 +3,27 @@ import { aStar } from 'ngraph.path';
 
 export const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
 export const statusNames={gate:'Ready for pushback',pushback:'Pushing back',ready:'Awaiting taxi',taxi:'Taxiing out',holding:'Holding short',lineup:'Lining up',linedup:'Ready for departure',takeoff:'Taking off',approach:'Inbound / awaiting clearance',landing:'Landing / vacating',inbound:'Awaiting stand',taxiin:'Taxiing to stand',parked:'On stand',done:'Departed'};
+export const requestsAction=p=>p.state!=='done'&&(['gate','ready','holding','linedup','approach','inbound'].includes(p.state)||p.held||p.blocked);
+export const orderedFlights=planes=>planes.filter(p=>p.state!=='done').sort((a,b)=>Number(requestsAction(b))-Number(requestsAction(a))||b.wait-a.wait||a.id-b.id);
 export class GroundSim {
   constructor(data){
     this.data=data;this.nodes=new Map(data.nodes.map(n=>[n.id,n]));this.stands=new Map(data.stands.map(s=>[s.id,s]));
     this.graph=createGraph();for(const n of data.nodes)this.graph.addNode(n.id,n);for(const e of data.edges)this.graph.addLink(e.a,e.b,e);
     this.reset();
   }
-  reset(){this.time=0;this.score=0;this.completed=0;this.incidents=0;this.planes=[];this.logs=[];this.nextId=1;this.runwayOwner=null;this.nextArrival=210;this.nextDeparture=260;this.conflictPairs=new Set();this.finished=false;
+  reset(){this.time=0;this.score=0;this.completed=0;this.incidents=0;this.planes=[];this.logs=[];this.nextId=1;this.runwayOwner=null;this.nextArrival=210;this.nextDeparture=260;this.nextCleanup=60;this.conflictPairs=new Set();
     for(const [i,stand] of ['3','8','20'].entries())this.spawnDeparture(stand,['BAW1439','EZY326','RYR6624'][i]);
     this.spawnArrival('KLM927');this.log('Edinburgh Ground. Runway 24 in use.','system');
   }
   log(text,type='info'){this.logs.unshift({time:this.time,text,type});this.logs=this.logs.slice(0,40);}
+  callsign(prefix,id){let number=1000+id%8900;while(this.planes.some(p=>p.state!=='done'&&p.call===prefix+number))number++;return prefix+number;}
   spawnDeparture(standId,call){const s=this.stands.get(standId);if(!s||this.planes.some(p=>p.stand===standId&&p.state!=='done'))return;
-    const n=this.nodes.get(s.node);const id=this.nextId++;const calls=['BAW1447','EZY604','RYR817','LOG321','SAS2542'];
-    this.planes.push({id,call:call||calls[(id-1)%calls.length],type:id%3===0?'B738':'A320',state:'gate',x:n.x,y:n.y,node:s.node,angle:s.heading,stand:standId,route:[],speed:0,direction:'departure',wait:0,held:false,blocked:false});
+    const n=this.nodes.get(s.node);const id=this.nextId++;const calls=['BAW','EZY','RYR','LOG','SAS'];
+    this.planes.push({id,call:call||this.callsign(calls[(id-1)%calls.length],id),type:id%3===0?'B738':'A320',state:'gate',x:n.x,y:n.y,node:s.node,angle:s.heading,stand:standId,route:[],speed:0,direction:'departure',wait:0,held:false,blocked:false});
   }
   spawnArrival(call){const id=this.nextId++,start=this.data.runwayStart,end=this.data.runwayEnd;const length=distance(start,end);const angle=Math.atan2(end.y-start.y,end.x-start.x);
-    this.planes.push({id,call:call||['AFR1886','EZY812','BAW1442','KLM931'][(id-1)%4],type:'A320',state:'approach',x:start.x-(end.x-start.x)/length*430,y:start.y-(end.y-start.y)/length*430,angle,node:null,stand:null,route:[],speed:0,direction:'arrival',wait:0,held:false,blocked:false});this.log(`${this.planes.at(-1).call}, inbound runway 24. Request landing.`);
+    const spacing=430+this.planes.filter(p=>p.state==='approach').length*220;
+    this.planes.push({id,call:call||this.callsign(['AFR','EZY','BAW','KLM'][(id-1)%4],id),type:'A320',state:'approach',x:start.x-(end.x-start.x)/length*spacing,y:start.y-(end.y-start.y)/length*spacing,angle,node:null,stand:null,route:[],speed:0,direction:'arrival',wait:0,held:false,blocked:false});this.log(`${this.planes.at(-1).call}, inbound runway 24. Request landing.`);
   }
   runwayDistance(n){const a=this.data.runwayStart,b=this.data.runwayEnd,dx=b.x-a.x,dy=b.y-a.y,t=((n.x-a.x)*dx+(n.y-a.y)*dy)/(dx*dx+dy*dy);if(t<-.01||t>1.01)return Infinity;return Math.abs((n.x-a.x)*dy-(n.y-a.y)*dx)/Math.hypot(dx,dy);}
   path(from,to,allowRunway=false){if(!this.nodes.has(from)||!this.nodes.has(to))return [];
@@ -37,7 +41,7 @@ export class GroundSim {
   routeNames(points){const names=[];for(let i=1;i<points.length;i++){const edge=this.graph.getLink(points[i-1].id,points[i].id)||this.graph.getLink(points[i].id,points[i-1].id);const ref=edge?.data.ref;if(ref&&ref!==names.at(-1)&&edge.data.type!=='parking_position')names.push(ref);}return names;}
   setRoute(p,points,state,speed){p.route=points.map(n=>({...n}));if(p.route.length&&distance(p,p.route[0])<1)p.route.shift();p.state=state;p.targetSpeed=speed;p.held=false;p.blocked=false;p.wait=0;}
   freeStands(){return this.data.stands.filter(s=>!this.planes.some(p=>p.stand===s.id&&p.state!=='done'));}
-  command(id,action,{stand,waypoints=[]}={}){const p=this.planes.find(p=>p.id===id);if(!p||this.finished)return {ok:false,message:'No active flight.'};
+  command(id,action,{stand,waypoints=[]}={}){const p=this.planes.find(p=>p.id===id);if(!p||p.state==='done')return {ok:false,message:'No active flight.'};
     const reject=message=>({ok:false,message});
     if(action==='hold'){if(!['pushback','taxi','taxiin','ready','inbound'].includes(p.state))return reject('This flight cannot hold here.');p.held=!p.held;this.log(`${p.call}, ${p.held?'hold position.':'continue.'}`);return {ok:true};}
     if(action==='pushback'){
@@ -74,13 +78,13 @@ export class GroundSim {
     if(p.state==='pushback'){p.state='ready';p.stand=null;this.log(`${p.call}, pushback complete. Request taxi.`);}
     else if(p.state==='taxi'){p.state='holding';this.log(`${p.call}, holding short D1.`);}
     else if(p.state==='lineup'){p.state='linedup';p.angle=Math.atan2(this.data.runwayEnd.y-p.y,this.data.runwayEnd.x-p.x);}
-    else if(p.state==='takeoff'){p.state='done';this.runwayOwner=null;this.completed++;this.score+=100;this.log(`${p.call}, airborne. Handoff complete. +100`,'success');}
+    else if(p.state==='takeoff'){p.state='done';p.completedAt=this.time;this.runwayOwner=null;this.completed++;this.score+=100;this.log(`${p.call}, airborne. Handoff complete. +100`,'success');}
     else if(p.state==='landing'){p.state='inbound';this.runwayOwner=null;this.log(`${p.call}, runway vacated. Request stand.`);}
     else if(p.state==='taxiin'){p.state='parked';p.parkedAt=this.time;this.completed++;this.score+=100;this.log(`${p.call}, on stand ${p.stand}. +100`,'success');}
   }
-  tick(dt){if(this.finished)return;dt=Math.min(dt,0.25);this.time+=dt;
-    if(this.time>=1200){this.finished=true;this.log('Shift complete.','success');return;}
-    if(this.time>this.nextArrival){if(this.planes.filter(p=>p.state==='approach').length<2)this.spawnArrival();this.nextArrival+=210;}
+  tick(dt){dt=Math.min(dt,0.25);this.time+=dt;
+    if(this.time>=this.nextCleanup){this.planes=this.planes.filter(p=>p.state!=='done'||this.time-p.completedAt<60);const ids=new Set(this.planes.map(p=>p.id));for(const pair of this.conflictPairs)if(pair.split(':').some(id=>!ids.has(+id)))this.conflictPairs.delete(pair);this.nextCleanup=this.time+60;}
+    if(this.time>this.nextArrival){if(this.planes.filter(p=>p.state==='approach').length<2&&this.planes.filter(p=>p.state!=='done').length<24)this.spawnArrival();this.nextArrival+=210;}
     if(this.time>this.nextDeparture){const free=this.freeStands().filter(s=>+s.id<25);if(free.length&&this.planes.filter(p=>p.direction==='departure'&&p.state!=='done').length<6)this.spawnDeparture(free[Math.floor(this.nextDeparture/260)%free.length].id);this.nextDeparture+=260;}
     const active=this.planes.filter(p=>!['done','approach'].includes(p.state));
     for(const p of this.planes){p.wait+=dt;p.blocked=false;

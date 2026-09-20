@@ -2,43 +2,44 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Control aircraft on Edinburgh Airport's real taxiway network. A browser-only ground control game.">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="Endless airport ground control on Edinburgh's real taxiway network. A browser-only game.">
   <title>Ground Control | Edinburgh</title>
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23181d21'/%3E%3Cpath d='M5 20 14 14 14 6 18 6 18 14 27 20 27 23 18 20 18 25 21 27 11 27 14 25 14 20 5 23Z' fill='%23f5d45a'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark"><i data-lucide="plane"></i></span><div>GROUND CONTROL<span class="edition">AIRPORT OPERATIONS</span></div><span class="mvp">MVP 01</span></div>
-    <button id="airport-button" class="airport-button"><span class="icao">EGPH</span> Edinburgh <i data-lucide="chevron-down"></i></button>
-    <div class="shift"><span class="live-dot"></span><span id="shift-label">DAY SHIFT</span><span id="clock">08:00:00</span></div>
-    <div class="playback"><button id="pause" class="icon-button" title="Pause simulation" aria-label="Pause simulation"><i data-lucide="pause"></i></button><div class="speeds" aria-label="Simulation speed"><button data-speed="1">1x</button><button data-speed="4" class="active">4x</button><button data-speed="8">8x</button></div></div>
-    <button id="restart" class="icon-button" title="New shift" aria-label="New shift"><i data-lucide="rotate-ccw"></i></button>
-  </header>
   <main class="workspace">
     <section class="map-panel" aria-label="Airport ground movement map">
-      <canvas id="map" aria-label="Edinburgh airport map. Select aircraft or taxiway waypoints." tabindex="0"></canvas>
-      <div class="map-heading"><span class="eyebrow">UNITED KINGDOM / EDI</span><h1>Edinburgh</h1><div class="map-weather"><i data-lucide="sun"></i> DAY / VMC <span>240° / 08 KT</span></div></div>
-      <div id="runway-badge" class="runway-badge"><span class="runway-symbol">24</span><span>RUNWAY<span id="runway-status">Available</span></span></div>
-      <div class="map-controls"><button id="zoom-in" title="Zoom in" aria-label="Zoom in"><i data-lucide="plus"></i></button><button id="zoom-out" title="Zoom out" aria-label="Zoom out"><i data-lucide="minus"></i></button><button id="fit" title="Fit airport" aria-label="Fit airport"><i data-lucide="scan"></i></button><button id="labels" class="active" title="Toggle map labels" aria-label="Toggle map labels" aria-pressed="true"><i data-lucide="tags"></i></button></div>
+      <canvas id="map" aria-label="Edinburgh airport map" tabindex="0"></canvas>
+      <div class="map-heading"><span class="eyebrow">EGPH / UNITED KINGDOM</span><h1>Edinburgh</h1><div class="map-weather"><i data-lucide="sun"></i> VMC <span>240° / 08 KT</span></div></div>
+      <div class="map-controls"><button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in"><i data-lucide="plus"></i></button><button id="zoom-out" title="Zoom out (-)" aria-label="Zoom out"><i data-lucide="minus"></i></button><button id="fit" title="Fit airport (F)" aria-label="Fit airport"><i data-lucide="scan"></i></button><button id="labels" class="active" title="Toggle map labels" aria-label="Toggle map labels" aria-pressed="true"><i data-lucide="tags"></i></button></div>
       <div class="compass"><span>N</span><i data-lucide="navigation-2"></i></div>
-      <div id="route-banner" class="route-banner" hidden></div>
+      <div id="route-banner" class="route-banner" hidden><span id="route-text"></span><button id="route-clear" title="Reset waypoints" aria-label="Reset waypoints"><i data-lucide="rotate-ccw"></i></button><button id="route-issue">Clear taxi <kbd>Enter</kbd></button></div>
       <div class="map-footer"><div class="legend"><span><b class="key dep"></b>Departure</span><span><b class="key arr"></b>Arrival</span><span><b class="key route"></b>Cleared route</span></div><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></div>
       <div id="map-loading" class="loading">Loading Edinburgh airfield...</div>
     </section>
-    <aside class="control-panel">
-      <div class="panel-title"><h2>Control desk</h2><span class="frequency">121.750</span></div>
-      <div class="scoreboard"><div><span>MOVEMENTS</span><strong id="movements">0<span>/ 10</span></strong></div><div><span>SCORE</span><strong id="score">0</strong></div><div><span>CONFLICTS</span><strong id="incidents">0</strong></div></div>
-      <section id="flight-detail" class="flight-detail"></section>
-      <section class="communications"><div class="section-title"><h3>Radio log</h3><span>GROUND</span></div><div id="radio-log" aria-live="polite"></div></section>
-      <div class="shift-progress"><span>SHIFT PROGRESS</span><span id="remaining">20:00 remaining</span><progress id="progress" max="1200" value="0"></progress></div>
+    <aside id="traffic-panel" class="control-panel" aria-label="Flight control panel">
+      <div class="panel-title"><h2>Aircraft <span id="traffic-count">04</span></h2><span id="pending" class="pending">4 requests</span></div>
+      <div class="filters" aria-label="Flight filters"><button data-filter="all" class="active">All flights</button><button data-filter="departure">Departures</button><button data-filter="arrival">Arrivals</button></div>
+      <div id="strips" class="strips"></div>
+      <details class="communications" open><summary><span>Radio log</span><span class="frequency">121.750</span></summary><div id="radio-log" aria-live="polite"></div></details>
     </aside>
-    <section class="traffic-panel"><div class="traffic-heading"><h2>Flight strips <span id="traffic-count">04</span></h2><div class="filters"><button data-filter="all" class="active">All flights</button><button data-filter="departure">Departures</button><button data-filter="arrival">Arrivals</button></div><span id="pending" class="pending">4 awaiting clearance</span></div><div id="strips" class="strips"></div></section>
+    <section id="aircraft-menu" class="aircraft-menu" aria-label="Aircraft actions" tabindex="-1" hidden></section>
   </main>
+  <header class="topbar">
+    <div class="brand"><span class="brand-mark"><i data-lucide="plane"></i></span><span>GROUND CONTROL</span></div>
+    <button id="airport-button" class="airport-button"><span class="icao">EGPH</span><span class="airport-name">Edinburgh</span><i data-lucide="chevron-down"></i></button>
+    <div class="scoreboard" aria-label="Operation statistics"><div><span>MOVEMENTS</span><strong id="movements">0</strong></div><div><span>SCORE</span><strong id="score">0</strong></div><div><span>CONFLICTS</span><strong id="incidents">0</strong></div></div>
+    <div id="runway-badge" class="runway-badge"><span class="runway-symbol">24</span><span id="runway-status">Available</span></div>
+    <div class="clock-group"><span id="clock">08:00:00</span><span id="simulation-status">RUNNING</span></div>
+    <div class="playback"><button id="pause" class="icon-button" title="Pause simulation (Space)" aria-label="Pause simulation"><i data-lucide="pause"></i></button><div class="speeds" aria-label="Simulation speed"><button data-speed="1">1x</button><button data-speed="4" class="active">4x</button><button data-speed="8">8x</button></div></div>
+    <div class="topbar-actions"><button id="shortcuts" class="icon-button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><i data-lucide="keyboard"></i></button><button id="toggle-panel" class="icon-button active" title="Toggle flight panel" aria-label="Toggle flight panel" aria-expanded="true" aria-controls="traffic-panel"><i data-lucide="panel-right"></i></button><button id="restart" class="icon-button" title="Restart simulation" aria-label="Restart simulation"><i data-lucide="rotate-ccw"></i></button></div>
+  </header>
   <div id="toast" role="status" hidden></div>
   <dialog id="airport-dialog"><form method="dialog"><button class="dialog-close icon-button" aria-label="Close airport catalog"><i data-lucide="x"></i></button></form><span class="eyebrow">AIRPORT CATALOG</span><h2>Select an airfield</h2><button id="select-edinburgh" class="airport-choice"><span class="catalog-code">EDI</span><span><strong>Edinburgh</strong><small>EGPH · United Kingdom</small><small>Runway 06/24 · 33 playable stands</small></span><i data-lucide="check"></i></button><p class="catalog-note">One airport is included in this first edition.</p><a href="data/egph.json" download>Airport data · ODbL 1.0 <i data-lucide="download"></i></a></dialog>
-  <dialog id="restart-dialog"><h2>Start a new shift?</h2><p>The current shift will end and the score will reset.</p><div class="dialog-actions"><button id="cancel-restart" class="secondary">Continue shift</button><button id="confirm-restart" class="primary">New shift</button></div></dialog>
-  <dialog id="results-dialog"><span class="eyebrow">SHIFT COMPLETE</span><h2 id="result-title">Ground handed over.</h2><div id="results"></div><button id="play-again" class="primary">Start another shift <i data-lucide="arrow-right"></i></button></dialog>
+  <dialog id="restart-dialog"><h2>Restart simulation?</h2><p>Aircraft and scores will reset.</p><div class="dialog-actions"><button id="cancel-restart" class="secondary">Cancel</button><button id="confirm-restart" class="primary">Restart</button></div></dialog>
+  <dialog id="shortcuts-dialog"><form method="dialog"><button class="dialog-close icon-button" aria-label="Close keyboard shortcuts"><i data-lucide="x"></i></button></form><h2>Keyboard shortcuts</h2><dl class="shortcut-list"><div><dt>Pushback</dt><dd><kbd>P</kbd></dd></div><div><dt>Plan taxi route</dt><dd><kbd>T</kbd></dd></div><div><dt>Issue taxi clearance</dt><dd><kbd>Enter</kbd></dd></div><div><dt>Hold / resume</dt><dd><kbd>H</kbd></dd></div><div><dt>Clear to land</dt><dd><kbd>L</kbd></dd></div><div><dt>Line up &amp; wait</dt><dd><kbd>U</kbd></dd></div><div><dt>Clear for takeoff</dt><dd><kbd>D</kbd></dd></div><div><dt>Go around</dt><dd><kbd>G</kbd></dd></div><div><dt>Next request</dt><dd><kbd>N</kbd></dd></div><div><dt>Pause / resume simulation</dt><dd><kbd>Space</kbd></dd></div><div><dt>Fit airport</dt><dd><kbd>F</kbd></dd></div><div><dt>Close menu / cancel route</dt><dd><kbd>Esc</kbd></dd></div></dl></dialog>
   <script type="module" src="app.js"></script>
 </body>
 </html>

@@ -1,59 +1,316 @@
-import { createIcons, Plane, ChevronDown, Pause, Play, RotateCcw, Sun, Plus, Minus, Scan, Tags, Navigation2, X, Check, Download, ArrowRight, CornerDownLeft, PlaneLanding, Undo2, ArrowUpRight, PlaneTakeoff, Route } from 'lucide';
+import { createIcons, Plane, ChevronDown, Pause, Play, RotateCcw, Sun, Plus, Minus, Scan, Tags, Navigation2, X, Check, Download, CornerDownLeft, PlaneLanding, Undo2, ArrowUpRight, PlaneTakeoff, Route, Keyboard, PanelRight } from 'lucide';
 import airportData from '../dist/data/egph.json';
-import { GroundSim, statusNames } from './sim.js';
+import { GroundSim, statusNames, requestsAction, orderedFlights } from './sim.js';
 import { AirportMap } from './map.js';
-const $=id=>document.getElementById(id);
-const icon=name=>`<i data-lucide="${name}"></i>`;
-const icons={Plane,ChevronDown,Pause,Play,RotateCcw,Sun,Plus,Minus,Scan,Tags,Navigation2,X,Check,Download,ArrowRight,CornerDownLeft,PlaneLanding,Undo2,ArrowUpRight,PlaneTakeoff,Route};
-const refreshIcons=()=>createIcons({icons,attrs:{'stroke-width':1.7}});
-const formatTime=t=>new Date((8*3600+Math.floor(t))*1000).toISOString().slice(11,19);
-let sim,map,selected=1,speed=4,paused=false,filter='all',waypoints=[],destination='',toastTimer,lastDetail='',lastStrips='',lastLogs='';
-let planning=false,modalPaused=null;
-function toast(message){$('toast').textContent=message;$('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>$('toast').hidden=true,4000);}
-function select(id){selected=id;waypoints=[];planning=false;destination='';lastDetail='';if(map){map.selected=id;map.preview=[];map.waypoints=[];}render();}
-function pause(value){paused=value;$('pause').innerHTML=icon(paused?'play':'pause');$('pause').title=paused?'Resume simulation':'Pause simulation';$('pause').setAttribute('aria-label',$('pause').title);$('shift-label').textContent=paused?'PAUSED':'DAY SHIFT';refreshIcons();}
-function showDialog(id){modalPaused=paused;pause(true);$(id).showModal();}
-for(const dialog of document.querySelectorAll('dialog'))dialog.addEventListener('close',()=>{if(modalPaused!==null){pause(modalPaused);modalPaused=null;}});
-function available(p){return ['ready','inbound'].includes(p.state)||(['taxi','taxiin'].includes(p.state)&&p.held);}
-function preview(){const p=sim.planes.find(p=>p.id===selected);if(!p||!available(p))return;planning=true;if(p.direction==='arrival'&&!destination)destination=sim.freeStands()[0]?.id||'';
-  const target=p.direction==='arrival'?sim.stands.get(destination)?.node:sim.data.departureHold;map.preview=target?sim.plan(p,target,waypoints):[];map.waypoints=waypoints;
-  if(!map.preview.length)toast('No taxi route is available to this destination.');lastDetail='';render();
+
+const $ = id => document.getElementById(id);
+const icon = name => '<i data-lucide="' + name + '"></i>';
+const icons = { Plane, ChevronDown, Pause, Play, RotateCcw, Sun, Plus, Minus, Scan, Tags, Navigation2, X, Check, Download, CornerDownLeft, PlaneLanding, Undo2, ArrowUpRight, PlaneTakeoff, Route, Keyboard, PanelRight };
+const refreshIcons = () => createIcons({ icons, attrs: { 'stroke-width': 1.7 } });
+const formatTime = t => new Date((8 * 3600 + Math.floor(t)) * 1000).toISOString().slice(11, 19);
+const shortcuts = { p: 'pushback', t: 'preview', h: 'hold', l: 'land', u: 'lineup', d: 'takeoff', g: 'goaround', Enter: 'taxi' };
+let sim, map, selected = 1, speed = 4, paused = false, filter = 'all';
+let planning = false, waypoints = [], destination = '', menuOpen = false, menuAnchor = null;
+let lastMenu = '', lastStrips = '', lastLogs = '', toastTimer, modalPaused = null;
+const selectedPlane = () => sim?.planes.find(p => p.id === selected);
+const canPlan = p => p && (['ready', 'inbound'].includes(p.state) || (['taxi', 'taxiin'].includes(p.state) && p.held));
+const stateText = p => p.blocked ? 'Traffic ahead / holding' : p.held ? 'Holding position' : statusNames[p.state];
+
+function toast(message) {
+  $('toast').textContent = message;
+  $('toast').hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => $('toast').hidden = true, 3500);
 }
-function issue(action){const result=sim.command(selected,action,{stand:destination,waypoints});if(!result.ok){toast(result.message);return;}planning=false;waypoints=[];map.preview=[];map.waypoints=[];lastDetail='';render();}
-function flightDetail(p){if(!p)return '<div class="empty">Select a flight strip.</div>';
-  const arrival=p.direction==='arrival';const state=p.blocked?'Traffic ahead / holding':p.held?'Holding position':statusNames[p.state];let controls='';
-  if(p.state==='gate')controls=`<button class="primary" data-action="pushback">${icon('corner-down-left')} Approve pushback</button>`;
-  else if(p.state==='approach')controls=`<div class="actions"><button class="primary" data-action="land" ${sim.runwayOwner?'disabled':''}>${icon('plane-landing')} Clear to land · 24</button><button class="secondary" data-action="goaround">${icon('undo-2')} Go around</button></div>`;
-  else if(p.state==='holding')controls=`<button class="primary" data-action="lineup" ${sim.runwayOwner?'disabled':''}>${icon('arrow-up-right')} Line up & wait · 24</button>`;
-  else if(p.state==='linedup')controls=`<button class="primary" data-action="takeoff">${icon('plane-takeoff')} Cleared for takeoff</button>`;
-  else if(available(p)){
-    const opts=sim.data.stands.map(s=>{const occupied=sim.planes.some(q=>q.id!==p.id&&q.stand===s.id&&q.state!=='done');return `<option value="${s.id}" ${s.id===destination?'selected':''} ${occupied?'disabled':''}>Stand ${s.id}${occupied?' · occupied':''}</option>`;}).join('');
-    controls=`${arrival?`<label class="clearance-title" for="stand-select">DESTINATION STAND</label><select id="stand-select" class="destination-select"><option value="">Assign stand</option>${opts}</select>`:''}<div class="actions"><button class="${planning?'secondary':'primary'}" id="preview-route">${icon('route')} ${planning?'Update route':'Plan taxi route'}</button>${planning?`<div class="clearance-title">${waypoints.length?'VIA '+waypoints.length+' WAYPOINTS':'PROPOSED CLEARANCE'} <button id="clear-waypoints">Reset</button></div><div class="route-summary">${sim.routeNames(map.preview).join(' → ')||'Apron'} → ${arrival?'Stand '+destination:'D1 / RWY 24'}</div><button class="primary" data-action="taxi" ${map.preview.length<2?'disabled':''}>${icon('check')} Issue taxi clearance</button>`:''}${p.held?`<button class="secondary" data-action="hold">${icon('play')} Resume current route</button>`:''}</div>`;
-  }else if(['pushback','taxi','taxiin'].includes(p.state))controls=`<button class="secondary" data-action="hold">${icon(p.held?'play':'pause')} ${p.held?'Continue':'Hold position'}</button>`;
-  else controls=`<div class="route-summary">${p.state==='parked'?'Turnaround in progress':p.state==='done'?'Handed over to departure':p.state==='landing'?'Landing clearance active':'Runway clearance active'}</div>`;
-  return `<span class="eyebrow">${arrival?'ARRIVAL':'DEPARTURE'} / FLIGHT ${String(p.id).padStart(2,'0')}</span><div class="flight-title"><h2>${p.call}</h2><span class="plane-type">${p.type}</span></div><div class="flight-state">${state}</div><dl class="flight-facts"><div><dt>${p.stand?'STAND':'POSITION'}</dt><dd>${p.stand||(['holding','lineup','linedup','takeoff'].includes(p.state)?'D1 / Runway 24':p.state==='approach'?'Final approach':'Taxiway')}</dd></div><div><dt>${p.state==='approach'?'CLEARANCE WINDOW':'DESTINATION'}</dt><dd>${p.state==='approach'?Math.max(0,Math.ceil(210-p.wait))+' sec':arrival?(p.stand?'Stand '+p.stand:'Awaiting assignment'):'Runway 24'}</dd></div></dl>${controls}`;
+function clearPlan() {
+  planning = false; waypoints = []; destination = '';
+  if (map) { map.preview = []; map.waypoints = []; }
 }
-function render(){if(!sim)return;const p=sim.planes.find(p=>p.id===selected);$('clock').textContent=formatTime(sim.time);$('movements').innerHTML=`${sim.completed}<span>/ 10</span>`;$('score').textContent=sim.score;$('incidents').textContent=sim.incidents;$('progress').value=sim.time;const remaining=Math.max(0,1200-Math.floor(sim.time));$('remaining').textContent=`${Math.floor(remaining/60)}:${String(remaining%60).padStart(2,'0')} remaining`;
-  const runway=sim.planes.find(p=>p.id===sim.runwayOwner);$('runway-status').textContent=runway?runway.call+' · occupied':'Available';$('runway-badge').classList.toggle('occupied',!!runway);
-  const detail=flightDetail(p);if(detail!==lastDetail){$('flight-detail').innerHTML=detail;lastDetail=detail;$('flight-detail').querySelectorAll('[data-action]').forEach(b=>b.onclick=()=>issue(b.dataset.action));if($('preview-route'))$('preview-route').onclick=preview;if($('stand-select'))$('stand-select').onchange=e=>{destination=e.target.value;if(planning)preview();};if($('clear-waypoints'))$('clear-waypoints').onclick=()=>{waypoints=[];preview();};refreshIcons();}
-  const planes=sim.planes.filter(p=>p.state!=='done');$('traffic-count').textContent=String(planes.length).padStart(2,'0');$('pending').textContent=`${planes.filter(p=>['gate','ready','inbound','holding','linedup','approach'].includes(p.state)).length} awaiting clearance`;
-  const strips=planes.filter(p=>filter==='all'||p.direction===filter).map(p=>`<button class="strip ${p.direction} ${p.id===selected?'selected':''}" data-flight="${p.id}" aria-label="Select ${p.call}"><div class="strip-top"><span class="strip-call">${p.call}</span>${icon(p.direction==='arrival'?'plane-landing':'plane-takeoff')}</div><div class="strip-meta">${p.type} · ${p.direction==='arrival'?'ARR':'DEP'} · ${p.stand?'STAND '+p.stand:'RWY 24'}</div><div class="strip-status"><span>${p.blocked?'Traffic hold':p.held?'Holding position':statusNames[p.state]}</span>${['gate','ready','approach','inbound','holding'].includes(p.state)?'<strong>REQ</strong>':''}</div></button>`).join('')||'<div class="empty">No flights in this queue.</div>';
-  if(strips!==lastStrips){$('strips').innerHTML=strips;lastStrips=strips;$('strips').querySelectorAll('[data-flight]').forEach(b=>b.onclick=()=>select(+b.dataset.flight));refreshIcons();}
-  const logs=sim.logs.slice(0,12).map(l=>`<div class="log-entry ${l.type}"><time>${formatTime(l.time).slice(3,8)}</time><span>${l.text}</span></div>`).join('');if(logs!==lastLogs){$('radio-log').innerHTML=logs;lastLogs=logs;}
-  $('route-banner').hidden=!planning;$('route-banner').textContent=`${waypoints.length?waypoints.length+' via points · ':''}Taxi to ${p?.direction==='arrival'?'stand '+destination:'D1 / runway 24'}`;
+function closeMenu(cancelPlan = false) {
+  menuOpen = false;
+  $('aircraft-menu').hidden = true;
+  document.body.classList.remove('context-open');
+  if (cancelPlan) { clearPlan(); render(); }
 }
-function restart(){sim.reset();pause(false);select(1);map.fit();lastLogs='';render();}
-$('pause').onclick=()=>pause(!paused);document.querySelectorAll('[data-speed]').forEach(b=>b.onclick=()=>{speed=+b.dataset.speed;document.querySelectorAll('[data-speed]').forEach(x=>x.classList.toggle('active',x===b));});
-document.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;document.querySelectorAll('[data-filter]').forEach(x=>x.classList.toggle('active',x===b));render();});
-$('zoom-in').onclick=()=>map.zoom(1.3);$('zoom-out').onclick=()=>map.zoom(1/1.3);$('fit').onclick=()=>map.fit();$('labels').onclick=()=>{map.labels=!map.labels;$('labels').classList.toggle('active',map.labels);$('labels').setAttribute('aria-pressed',String(map.labels));};
-$('airport-button').onclick=()=>showDialog('airport-dialog');$('select-edinburgh').onclick=()=>$('airport-dialog').close();$('restart').onclick=()=>showDialog('restart-dialog');$('cancel-restart').onclick=()=>$('restart-dialog').close();$('confirm-restart').onclick=()=>{$('restart-dialog').close();restart();};$('play-again').onclick=()=>{$('results-dialog').close();restart();};
-document.addEventListener('keydown',e=>{if(e.code==='Space'&&!['SELECT','BUTTON','INPUT'].includes(document.activeElement.tagName)&&!document.querySelector('dialog[open]')){e.preventDefault();pause(!paused);}});
-async function start(){try{sim=new GroundSim(airportData);map=new AirportMap($('map'),sim,select,id=>{const p=sim.planes.find(p=>p.id===selected);if(available(p)){if(!planning)preview();if(waypoints.at(-1)!==id)waypoints.push(id);preview();}else toast('Select a flight awaiting taxi, or hold a taxiing flight to revise its route.');});$('map-loading').hidden=true;render();
-  const dataDownload=$('airport-dialog').querySelector('a');dataDownload.href=URL.createObjectURL(new Blob([JSON.stringify(airportData)],{type:'application/json'}));dataDownload.download='egph.json';
-  // Expose the same commands for browser agents and reproducible simulation checks.
-  window.groundControl={sim,map,select,issue,preview,setPaused:pause,getState:()=>({time:sim.time,score:sim.score,completed:sim.completed,runway:sim.runwayOwner,flights:sim.planes.map(({id,call,state,x,y,stand})=>({id,call,state,x,y,stand}))})};
-  const context=document.modelContext;if(context?.registerTool){const controller=new AbortController();window.addEventListener('pagehide',()=>controller.abort(),{once:true});for(const tool of [{name:'read_ground_control',description:'Read the airport simulation and flight states.',inputSchema:{type:'object',properties:{},additionalProperties:false},annotations:{readOnlyHint:true},execute:()=>window.groundControl.getState()},{name:'issue_ground_clearance',description:'Issue a clearance to an aircraft using the same rules as the control desk.',inputSchema:{type:'object',properties:{flightId:{type:'integer'},action:{type:'string',enum:['pushback','hold','taxi','lineup','takeoff','land','goaround']},stand:{type:'string'}},required:['flightId','action'],additionalProperties:false},annotations:{readOnlyHint:false},execute:input=>{if(!Number.isInteger(input.flightId)||typeof input.action!=='string')throw new Error('Invalid clearance');const result=sim.command(input.flightId,input.action,{stand:input.stand});render();return result;}}]){try{Promise.resolve(context.registerTool(tool,{signal:controller.signal})).catch(()=>{});}catch{}}}
-  let prev=performance.now(),ui=0;function frame(now){let dt=Math.min((now-prev)/1000,.1);prev=now;if(!paused&&!sim.finished){let remaining=dt*speed;while(remaining>0){const step=Math.min(.1,remaining);sim.tick(step);remaining-=step;}}
-    map.draw();if(now-ui>200){render();ui=now;}if(sim.finished&&!$('results-dialog').open){$('results').innerHTML=`<p>${sim.completed>=10?'Movement target reached.':'Movement target: '+sim.completed+' / 10'}</p><div>Movements completed <strong>${sim.completed}</strong></div><div>Final score <strong>${sim.score}</strong></div><div>Traffic conflicts / missed arrivals <strong>${sim.incidents}</strong></div>`;showDialog('results-dialog');}requestAnimationFrame(frame);}requestAnimationFrame(frame);
-  }catch(error){$('map-loading').textContent=error.message;console.error(error);}}
-refreshIcons();start();
+function pause(value) {
+  paused = value;
+  $('pause').innerHTML = icon(paused ? 'play' : 'pause');
+  const label = paused ? 'Resume simulation' : 'Pause simulation';
+  $('pause').title = label + ' (Space)';
+  $('pause').setAttribute('aria-label', label);
+  $('simulation-status').textContent = paused ? 'PAUSED' : 'RUNNING';
+  refreshIcons();
+}
+function showDialog(id) {
+  closeMenu();
+  modalPaused = paused;
+  pause(true);
+  $(id).showModal();
+}
+for (const dialog of document.querySelectorAll('dialog')) {
+  dialog.addEventListener('close', () => {
+    if (modalPaused !== null) { pause(modalPaused); modalPaused = null; }
+    $('map').focus({ preventScroll: true });
+  });
+}
+function usableWidth() {
+  return innerWidth > 600 && !$('traffic-panel').hidden
+    ? $('traffic-panel').getBoundingClientRect().left - 14 : innerWidth;
+}
+function select(id, anchor) {
+  const p = sim.planes.find(p => p.id === id && p.state !== 'done');
+  if (!p) return;
+  if (selected !== id) clearPlan();
+  selected = id;
+  map.selected = id;
+  menuOpen = true;
+  document.body.classList.add('context-open');
+  if (!anchor) {
+    const point = map.screen(p);
+    const top = document.querySelector('.topbar').getBoundingClientRect().bottom;
+    if (point.x < 45 || point.x > usableWidth() - 45 || point.y < top + 60 || point.y > innerHeight - 60) {
+      map.camera.x = p.x + (innerWidth / 2 - usableWidth() / 2) / map.camera.zoom;
+      map.camera.y = p.y + (innerHeight / 2 - (innerHeight + top) / 2) / map.camera.zoom;
+    }
+  }
+  menuAnchor = anchor || map.screen(p);
+  lastMenu = '';
+  render();
+}
+function positionMenu() {
+  if (!menuOpen) return;
+  const menu = $('aircraft-menu');
+  const anchor = menuAnchor || map.screen(selectedPlane());
+  const top = document.querySelector('.topbar').getBoundingClientRect().bottom + 10;
+  const right = Math.max(menu.offsetWidth + 24, usableWidth() - 12);
+  let x = anchor.x + 26;
+  if (x + menu.offsetWidth > right) x = anchor.x - menu.offsetWidth - 26;
+  x = Math.max(12, Math.min(right - menu.offsetWidth, x));
+  const y = Math.max(top, Math.min(innerHeight - menu.offsetHeight - 12, anchor.y - 24));
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+}
+function preview() {
+  const p = selectedPlane();
+  if (!canPlan(p)) return;
+  planning = true;
+  if (p.direction === 'arrival' && !destination) destination = p.stand || sim.freeStands()[0]?.id || '';
+  const target = p.direction === 'arrival' ? sim.stands.get(destination)?.node : sim.data.departureHold;
+  map.preview = target ? sim.plan(p, target, waypoints) : [];
+  map.waypoints = waypoints;
+  if (!map.preview.length) toast('No taxi route is available to this destination.');
+  lastMenu = ''; render();
+}
+function options(p) {
+  if (!p || p.state === 'done') return [];
+  const action = (id, label, glyph, key, primary = false, disabled = false) => ({ id, label, glyph, key, primary, disabled });
+  if (p.state === 'gate') return [action('pushback', 'Approve pushback', 'corner-down-left', 'P', true)];
+  if (p.state === 'approach') return [
+    action('land', 'Clear to land / 24', 'plane-landing', 'L', true, !!sim.runwayOwner),
+    action('goaround', 'Go around', 'undo-2', 'G')
+  ];
+  if (p.state === 'holding') return [action('lineup', 'Line up & wait / 24', 'arrow-up-right', 'U', true, !!sim.runwayOwner)];
+  if (p.state === 'linedup') return [action('takeoff', 'Cleared for takeoff', 'plane-takeoff', 'D', true)];
+  const actions = [];
+  if (canPlan(p)) {
+    actions.push(action('preview', planning ? 'Update taxi route' : 'Plan taxi route', 'route', 'T', !planning));
+    if (planning) actions.push(action('taxi', 'Issue taxi clearance', 'check', 'Enter', true, map.preview.length < 2));
+  }
+  if (['pushback', 'taxi', 'taxiin'].includes(p.state)) actions.push(action('hold', p.held ? 'Resume movement' : 'Hold position', p.held ? 'play' : 'pause', 'H'));
+  return actions;
+}
+function issue(action) {
+  const p = selectedPlane(), option = options(p).find(a => a.id === action);
+  if (!option) { toast(p ? 'That action is unavailable: ' + stateText(p) + '.' : 'Select an aircraft first.'); return; }
+  if (option.disabled) { toast(action === 'taxi' ? 'A valid taxi route is required.' : 'Runway occupied. Hold position.'); return; }
+  if (action === 'preview') {
+    if (!menuOpen) select(selected);
+    preview();
+    return;
+  }
+  const result = sim.command(selected, action, { stand: destination, waypoints });
+  if (!result.ok) { toast(result.message); return; }
+  clearPlan();
+  lastMenu = '';
+  render();
+}
+function menuHTML(p) {
+  const arriving = p.direction === 'arrival';
+  const actions = options(p);
+  let content = '';
+  if (canPlan(p) && arriving) {
+    const choices = sim.data.stands.map(s => {
+      const occupied = sim.planes.some(q => q.id !== p.id && q.stand === s.id && q.state !== 'done');
+      return '<option value="' + s.id + '" ' + (s.id === destination ? 'selected ' : '') + (occupied ? 'disabled' : '') + '>Stand ' + s.id + (occupied ? ' / occupied' : '') + '</option>';
+    }).join('');
+    content += '<div class="destination"><label for="stand-select">DESTINATION STAND</label><select id="stand-select"><option value="">Assign stand</option>' + choices + '</select></div>';
+  }
+  if (planning) content += '<div class="route-summary">' + (sim.routeNames(map.preview).join(' → ') || 'Apron') + ' → ' + (arriving ? 'Stand ' + destination : 'D1 / RWY 24') + '</div>';
+  content += '<div class="menu-actions" role="menu" aria-label="Clearances for ' + p.call + '">' + actions.map(a =>
+    '<button role="menuitem" class="menu-action ' + (a.primary ? 'primary-action' : '') + '" data-action="' + a.id + '" aria-keyshortcuts="' + a.key + '" ' + (a.disabled ? 'disabled title="Clearance unavailable"' : '') + '>' + icon(a.glyph) + '<span class="action-label">' + a.label + '</span><kbd>' + a.key + '</kbd></button>'
+  ).join('') + '</div>';
+  if (!actions.length) content += '<div class="clearance-note">' + (p.state === 'parked' ? 'Turnaround in progress' : p.state === 'done' ? 'Handoff complete' : 'Clearance active') + '</div>';
+  return '<div class="menu-header"><div class="menu-heading"><h2>' + p.call + '</h2><span class="plane-type">' + p.type + '</span></div><button class="icon-button close-menu" id="close-menu" aria-label="Close aircraft actions" title="Close (Esc)">' + icon('x') + '</button><div class="flight-state">' + stateText(p) + '</div></div><div class="menu-meta"><span>' + (arriving ? 'ARRIVAL' : 'DEPARTURE') + '</span><span>' + (p.stand ? 'STAND ' + p.stand : 'RWY 24') + '</span></div>' + content;
+}
+function render() {
+  if (!sim) return;
+  const p = selectedPlane();
+  $('clock').textContent = formatTime(sim.time);
+  $('movements').textContent = sim.completed;
+  $('score').textContent = sim.score;
+  $('incidents').textContent = sim.incidents;
+  const runway = sim.planes.find(p => p.id === sim.runwayOwner);
+  $('runway-status').textContent = runway ? runway.call : 'Available';
+  $('runway-badge').classList.toggle('occupied', !!runway);
+  $('runway-badge').title = runway ? 'Runway 24 occupied by ' + runway.call : 'Runway 24 available';
+  if (menuOpen && (!p || p.state === 'done')) closeMenu();
+  if (menuOpen) {
+    const html = menuHTML(p);
+    const menu = $('aircraft-menu');
+    menu.hidden = false;
+    if (html !== lastMenu) {
+      const focusedAction = menu.contains(document.activeElement) ? document.activeElement.dataset.action : null;
+      menu.innerHTML = html; lastMenu = html;
+      menu.querySelectorAll('[data-action]').forEach(b => b.onclick = () => issue(b.dataset.action));
+      $('close-menu').onclick = () => { closeMenu(); $('map').focus({ preventScroll: true }); };
+      if ($('stand-select')) $('stand-select').onchange = e => { destination = e.target.value; if (planning) preview(); };
+      if (focusedAction) (menu.querySelector('[data-action="' + focusedAction + '"]') || menu).focus({ preventScroll: true });
+      refreshIcons();
+    }
+    positionMenu();
+  }
+  const planes = orderedFlights(sim.planes);
+  const pending = planes.filter(requestsAction).length;
+  $('traffic-count').textContent = String(planes.length).padStart(2, '0');
+  $('pending').textContent = pending + (pending === 1 ? ' request' : ' requests');
+  const strips = planes.filter(p => filter === 'all' || p.direction === filter).map(p =>
+    '<button class="strip ' + p.direction + (p.id === selected ? ' selected' : '') + (requestsAction(p) ? ' request' : '') + '" data-flight="' + p.id + '" aria-label="Select ' + p.call + '"><span class="strip-top">' + icon(p.direction === 'arrival' ? 'plane-landing' : 'plane-takeoff') + '<span class="strip-call">' + p.call + '</span></span><span class="strip-meta">' + p.type + ' / ' + (p.stand ? 'S' + p.stand : '24') + '</span><span class="strip-status"><span>' + stateText(p) + '</span>' + (requestsAction(p) ? '<strong>REQ</strong>' : '') + '</span></button>'
+  ).join('') || '<div class="empty">No flights in this queue.</div>';
+  if (strips !== lastStrips) {
+    const focusedId = $('strips').contains(document.activeElement) ? document.activeElement.dataset.flight : null;
+    $('strips').innerHTML = strips; lastStrips = strips;
+    $('strips').querySelectorAll('[data-flight]').forEach(b => b.onclick = () => select(+b.dataset.flight));
+    if (focusedId) $('strips').querySelector('[data-flight="' + focusedId + '"]')?.focus({ preventScroll: true });
+    refreshIcons();
+  }
+  const logs = sim.logs.slice(0,12).map(l => '<div class="log-entry ' + l.type + '"><time>' + formatTime(l.time).slice(3,8) + '</time><span>' + l.text + '</span></div>').join('');
+  if (logs !== lastLogs) { $('radio-log').innerHTML = logs; lastLogs = logs; }
+  $('route-banner').hidden = !planning;
+  $('route-text').textContent = (waypoints.length ? waypoints.length + ' via / ' : '') + 'Taxi to ' + (p?.direction === 'arrival' ? 'stand ' + destination : 'D1 / 24');
+  $('route-issue').disabled = map.preview.length < 2;
+}
+function restart() {
+  sim.reset(); clearPlan(); closeMenu(); selected = 1; map.selected = 1;
+  filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
+  pause(false); map.fit(); lastLogs = ''; lastStrips = ''; render();
+}
+$('pause').onclick = () => pause(!paused);
+document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
+  speed = +b.dataset.speed; document.querySelectorAll('[data-speed]').forEach(x => x.classList.toggle('active', x === b));
+});
+document.querySelectorAll('[data-filter]').forEach(b => b.onclick = () => {
+  filter = b.dataset.filter; document.querySelectorAll('[data-filter]').forEach(x => x.classList.toggle('active', x === b)); render();
+});
+$('zoom-in').onclick = () => { closeMenu(); map.zoom(1.3); };
+$('zoom-out').onclick = () => { closeMenu(); map.zoom(1 / 1.3); };
+$('fit').onclick = () => { closeMenu(); map.fit(); };
+$('labels').onclick = () => { map.labels = !map.labels; $('labels').classList.toggle('active', map.labels); $('labels').setAttribute('aria-pressed', String(map.labels)); };
+$('toggle-panel').onclick = () => {
+  const visible = $('traffic-panel').hidden;
+  $('traffic-panel').hidden = !visible;
+  $('toggle-panel').classList.toggle('active', visible);
+  $('toggle-panel').setAttribute('aria-expanded', String(visible));
+  closeMenu();
+};
+$('route-clear').onclick = () => { waypoints = []; preview(); };
+$('route-issue').onclick = () => issue('taxi');
+$('airport-button').onclick = () => showDialog('airport-dialog');
+$('select-edinburgh').onclick = () => $('airport-dialog').close();
+$('restart').onclick = () => showDialog('restart-dialog');
+$('cancel-restart').onclick = () => $('restart-dialog').close();
+$('confirm-restart').onclick = () => { $('restart-dialog').close(); restart(); };
+$('shortcuts').onclick = () => showDialog('shortcuts-dialog');
+document.addEventListener('pointerdown', e => {
+  if (menuOpen && !$('aircraft-menu').contains(e.target) && !$('strips').contains(e.target) && e.target !== $('map')) closeMenu();
+});
+document.addEventListener('keydown', e => {
+  if (e.repeat || e.ctrlKey || e.metaKey || e.altKey || document.querySelector('dialog[open]')) return;
+  const target = document.activeElement;
+  if (target.matches('input,textarea,select') || target.isContentEditable) return;
+  if (e.key === 'Escape') { e.preventDefault(); closeMenu(true); $('map').focus({ preventScroll: true }); return; }
+  if (menuOpen && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key) && $('aircraft-menu').contains(target)) {
+    const buttons = [...$('aircraft-menu').querySelectorAll('[role="menuitem"]:not(:disabled)')];
+    if (!buttons.length) return;
+    e.preventDefault();
+    const index = buttons.indexOf(target);
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? buttons.length - 1 : (index + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length;
+    buttons[next].focus(); return;
+  }
+  if (e.key === '?') { e.preventDefault(); showDialog('shortcuts-dialog'); return; }
+  if (e.code === 'Space') {
+    if (target.matches('button,summary')) return;
+    e.preventDefault(); pause(!paused); return;
+  }
+  const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+  if (key === 'f') { e.preventDefault(); closeMenu(); map.fit(); return; }
+  if (key === 'n') {
+    e.preventDefault(); const queue = orderedFlights(sim.planes).filter(requestsAction);
+    if (queue.length) select(queue[(queue.findIndex(p => p.id === selected) + 1) % queue.length].id);
+    return;
+  }
+  const action = shortcuts[key];
+  if (!action) return;
+  if (key === 'Enter' && (!planning || target.closest('.topbar,.control-panel'))) return;
+  e.preventDefault(); issue(action);
+});
+window.addEventListener('resize', () => { closeMenu(); });
+
+async function start() {
+  try {
+    sim = new GroundSim(airportData);
+    map = new AirportMap($('map'), sim, select, id => {
+      if (canPlan(selectedPlane())) {
+        if (!planning) preview();
+        if (waypoints.at(-1) !== id) waypoints.push(id);
+        preview();
+      }
+    }, () => closeMenu());
+    $('map-loading').hidden = true;
+    if (innerWidth <= 600) document.querySelector('.communications').open = false;
+    const dataDownload = $('airport-dialog').querySelector('a');
+    dataDownload.href = URL.createObjectURL(new Blob([JSON.stringify(airportData)], { type: 'application/json' }));
+    dataDownload.download = 'egph.json';
+    render();
+    window.groundControl = { sim, map, select, issue, preview, setPaused: pause, getState: () => ({
+      time: sim.time, score: sim.score, completed: sim.completed, runway: sim.runwayOwner,
+      flights: sim.planes.map(({ id, call, state, x, y, stand }) => ({ id, call, state, x, y, stand }))
+    }) };
+    const context = document.modelContext;
+    if (context?.registerTool) {
+      const controller = new AbortController();
+      window.addEventListener('pagehide', () => controller.abort(), { once: true });
+      const tools = [
+        { name: 'read_ground_control', description: 'Read the airport simulation and flight states.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true }, execute: () => window.groundControl.getState() },
+        { name: 'issue_ground_clearance', description: 'Issue a clearance to an aircraft using the same rules as the context menu.', inputSchema: { type: 'object', properties: { flightId: { type: 'integer' }, action: { type: 'string', enum: ['pushback','hold','taxi','lineup','takeoff','land','goaround'] }, stand: { type: 'string' } }, required: ['flightId','action'], additionalProperties: false }, annotations: { readOnlyHint: false }, execute: input => {
+          if (!Number.isInteger(input.flightId) || typeof input.action !== 'string') throw new Error('Invalid clearance');
+          const result = sim.command(input.flightId, input.action, { stand: input.stand }); render(); return result;
+        } }
+      ];
+      for (const tool of tools) { try { Promise.resolve(context.registerTool(tool, { signal: controller.signal })).catch(() => {}); } catch {} }
+    }
+    let previous = performance.now(), lastUI = 0;
+    function frame(now) {
+      const dt = Math.min((now - previous) / 1000, .1); previous = now;
+      if (!paused) {
+        let remaining = dt * speed;
+        while (remaining > 0) { const step = Math.min(.1, remaining); sim.tick(step); remaining -= step; }
+      }
+      map.draw();
+      if (now - lastUI > 150) { render(); lastUI = now; }
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+  } catch (error) { $('map-loading').textContent = error.message; console.error(error); }
+}
+refreshIcons();
+start();

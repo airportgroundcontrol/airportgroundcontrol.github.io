@@ -1,38 +1,39 @@
 import { distance } from './sim.js';
 export class AirportMap {
-  constructor(canvas,sim,onSelect,onWaypoint){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.sim=sim;this.selected=1;this.preview=[];this.waypoints=[];this.labels=true;this.camera={x:0,y:0,zoom:1};this.onSelect=onSelect;this.onWaypoint=onWaypoint;this.pointers=new Map();
+  constructor(canvas,sim,onSelect,onWaypoint,onDismiss=()=>{}){this.canvas=canvas;this.ctx=canvas.getContext('2d');this.sim=sim;this.selected=1;this.preview=[];this.waypoints=[];this.labels=true;this.camera={x:0,y:0,zoom:1};this.onSelect=onSelect;this.onWaypoint=onWaypoint;this.onDismiss=onDismiss;this.pointers=new Map();
     new ResizeObserver(()=>this.resize()).observe(canvas);this.bind();this.resize();
   }
   resize(){const r=this.canvas.getBoundingClientRect();this.width=r.width;this.height=r.height;const dpr=window.devicePixelRatio||1;this.canvas.width=r.width*dpr;this.canvas.height=r.height*dpr;this.ctx.setTransform(dpr,0,0,dpr,0,0);if(!this.initialized){this.fit();this.initialized=true;}this.draw();}
-  fit(){this.camera={x:70,y:-65,zoom:Math.min(this.width/3400,(this.height-115)/1900)};}
+  fit(){const panel=document.getElementById('traffic-panel'),header=document.querySelector('.topbar').getBoundingClientRect().height;const mobile=this.width<=600;const width=!mobile&&!panel.hidden?panel.getBoundingClientRect().left-14:this.width;const top=mobile&&!panel.hidden?Math.min(this.height*.5,header+panel.offsetHeight+24):header+20;const bottom=this.height-55;const zoom=Math.min(width/3400,(bottom-top)/1900);this.camera={x:70+(this.width-width)/2/zoom,y:-65+(this.height/2-(top+bottom)/2)/zoom,zoom};}
   screen(n){return{x:(n.x-this.camera.x)*this.camera.zoom+this.width/2,y:(n.y-this.camera.y)*this.camera.zoom+this.height/2};}
   world(x,y){return{x:(x-this.width/2)/this.camera.zoom+this.camera.x,y:(y-this.height/2)/this.camera.zoom+this.camera.y};}
   zoom(factor,x=this.width/2,y=this.height/2){const old=this.world(x,y);this.camera.zoom=Math.max(.1,Math.min(3,this.camera.zoom*factor));const now=this.world(x,y);this.camera.x+=old.x-now.x;this.camera.y+=old.y-now.y;}
   bind(){const c=this.canvas;
-    c.addEventListener('wheel',e=>{e.preventDefault();const r=c.getBoundingClientRect();this.zoom(Math.exp(-e.deltaY*.001),e.clientX-r.left,e.clientY-r.top);},{passive:false});
-    c.addEventListener('pointerdown',e=>{c.setPointerCapture(e.pointerId);this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});this.drag={x:e.clientX,y:e.clientY,moved:false};});
+    c.addEventListener('wheel',e=>{e.preventDefault();this.onDismiss();const r=c.getBoundingClientRect();this.zoom(Math.exp(-e.deltaY*.001),e.clientX-r.left,e.clientY-r.top);},{passive:false});
+    c.addEventListener('pointerdown',e=>{if(e.button!==0)return;c.focus({preventScroll:true});c.setPointerCapture(e.pointerId);this.pointers.set(e.pointerId,{x:e.clientX,y:e.clientY});this.drag={x:e.clientX,y:e.clientY,moved:false};});
     c.addEventListener('pointermove',e=>{if(!this.pointers.has(e.pointerId))return;const prev=this.pointers.get(e.pointerId);const next={x:e.clientX,y:e.clientY};
-      if(this.pointers.size===2){const other=[...this.pointers.entries()].find(([id])=>id!==e.pointerId)[1];const before=distance(prev,other),after=distance(next,other);if(before>0)this.zoom(after/before);this.drag.moved=true;}else{const dx=next.x-prev.x,dy=next.y-prev.y;this.camera.x-=dx/this.camera.zoom;this.camera.y-=dy/this.camera.zoom;if(Math.hypot(e.clientX-this.drag.x,e.clientY-this.drag.y)>4)this.drag.moved=true;}this.pointers.set(e.pointerId,next);});
-    c.addEventListener('pointerup',e=>{this.pointers.delete(e.pointerId);if(!this.drag?.moved&&this.pointers.size===0){const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const plane=this.sim.planes.filter(p=>p.state!=='done').sort((a,b)=>distance(this.screen(a),{x,y})-distance(this.screen(b),{x,y}))[0];if(plane&&distance(this.screen(plane),{x,y})<23){this.onSelect(plane.id);return;}
-        const p=this.world(x,y);const nearest=this.sim.data.nodes.filter(n=>this.sim.runwayDistance(n)>30).sort((a,b)=>distance(a,p)-distance(b,p))[0];if(nearest&&distance(nearest,p)*this.camera.zoom<24)this.onWaypoint(nearest.id);}});
+      if(this.pointers.size===2){const other=[...this.pointers.entries()].find(([id])=>id!==e.pointerId)[1];const before=distance(prev,other),after=distance(next,other);if(before>0)this.zoom(after/before);this.drag.moved=true;}else{const dx=next.x-prev.x,dy=next.y-prev.y;this.camera.x-=dx/this.camera.zoom;this.camera.y-=dy/this.camera.zoom;if(Math.hypot(e.clientX-this.drag.x,e.clientY-this.drag.y)>4)this.drag.moved=true;}if(this.drag.moved)this.onDismiss();this.pointers.set(e.pointerId,next);});
+    c.addEventListener('pointerup',e=>{if(e.button!==0)return;this.pointers.delete(e.pointerId);if(!this.drag?.moved&&this.pointers.size===0){const r=c.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;const plane=this.sim.planes.filter(p=>p.state!=='done').sort((a,b)=>distance(this.screen(a),{x,y})-distance(this.screen(b),{x,y}))[0];if(plane&&distance(this.screen(plane),{x,y})<23){this.onSelect(plane.id,{x,y});return;}
+        this.onDismiss();const p=this.world(x,y);const nearest=this.sim.data.nodes.filter(n=>this.sim.runwayDistance(n)>30).sort((a,b)=>distance(a,p)-distance(b,p))[0];if(nearest&&distance(nearest,p)*this.camera.zoom<24)this.onWaypoint(nearest.id);}});
+    c.addEventListener('contextmenu',e=>{e.preventDefault();const r=c.getBoundingClientRect(),point={x:e.clientX-r.left,y:e.clientY-r.top};const p=this.sim.planes.filter(p=>p.state!=='done').sort((a,b)=>distance(this.screen(a),point)-distance(this.screen(b),point))[0];if(p&&distance(this.screen(p),point)<23)this.onSelect(p.id,point);else this.onDismiss();});
     c.addEventListener('pointercancel',e=>this.pointers.delete(e.pointerId));
     c.addEventListener('keydown',e=>{if(['+','=','-','0'].includes(e.key)){e.preventDefault();if(e.key==='0')this.fit();else this.zoom(e.key==='-'?.8:1.25);}});
   }
   line(points,color,width,dash=[]){if(points.length<2)return;const c=this.ctx;c.beginPath();for(const [i,point] of points.entries()){const p=this.screen(Array.isArray(point)?{x:point[0],y:point[1]}:point);if(i===0)c.moveTo(p.x,p.y);else c.lineTo(p.x,p.y);}c.strokeStyle=color;c.lineWidth=width;c.setLineDash(dash);c.stroke();c.setLineDash([]);}
   polygon(points,fill,stroke){const c=this.ctx;c.beginPath();points.forEach((point,i)=>{const p=this.screen({x:point[0],y:point[1]});if(!i)c.moveTo(p.x,p.y);else c.lineTo(p.x,p.y);});c.closePath();c.fillStyle=fill;c.fill();if(stroke){c.strokeStyle=stroke;c.lineWidth=1;c.stroke();}}
   label(text,x,y,color='#d3decb',size=10,bg){const c=this.ctx;c.font=`${size}px ui-monospace, monospace`;c.textAlign='center';if(bg){const w=c.measureText(text).width;c.fillStyle=bg;c.fillRect(x-w/2-5,y-size, w+10,size+6);}c.fillStyle=color;c.fillText(text,x,y);}
-  draw(){const c=this.ctx,z=this.camera.zoom;c.clearRect(0,0,this.width,this.height);c.fillStyle='#293d32';c.fillRect(0,0,this.width,this.height);c.lineJoin='round';c.lineCap='round';
+  draw(){const c=this.ctx,z=this.camera.zoom;c.clearRect(0,0,this.width,this.height);c.fillStyle='#111e1b';c.fillRect(0,0,this.width,this.height);c.lineJoin='round';c.lineCap='round';
     const grid=250;const tl=this.world(0,0),br=this.world(this.width,this.height);for(let x=Math.floor(tl.x/grid)*grid;x<br.x;x+=grid)this.line([{x,y:tl.y},{x,y:br.y}],'#3e53433b',.6);for(let y=Math.floor(tl.y/grid)*grid;y<br.y;y+=grid)this.line([{x:tl.x,y},{x:br.x,y}],'#3e53433b',.6);
     const fs=this.sim.data.features;
-    for(const f of fs)if(f.type==='aerodrome')this.polygon(f.points,'#334a39','#50664a');
-    for(const f of fs)if(f.type==='road')this.line(f.points,'#60706555',Math.max(1,5*z));
-    for(const f of fs)if(f.type==='apron')this.polygon(f.points,'#626e66','#899488');
-    for(const f of fs)if(['taxiway','taxilane'].includes(f.type)){this.line(f.points,'#9aa294',Math.max(3,26*z));this.line(f.points,'#727c72',Math.max(2,23*z));}
+    for(const f of fs)if(f.type==='aerodrome')this.polygon(f.points,'#1c3027','#3c5040');
+    for(const f of fs)if(f.type==='road')this.line(f.points,'#495e4e50',Math.max(1,5*z));
+    for(const f of fs)if(f.type==='apron')this.polygon(f.points,'#384d40','#65715a');
+    for(const f of fs)if(['taxiway','taxilane'].includes(f.type)){this.line(f.points,'#657665',Math.max(3,26*z));this.line(f.points,'#485d4d',Math.max(2,23*z));}
     for(const f of fs)if(['runway','stopway'].includes(f.type)){this.line(f.points,'#92998a',Math.max(10,48*z));this.line(f.points,'#38413d',Math.max(8,44*z));}
     for(const f of fs)if(f.type==='runway')this.line(f.points,'#cbd0b9',Math.max(.7,1.5*z),[Math.max(3,27*z),Math.max(3,21*z)]);
     for(const f of fs)if(['taxiway','taxilane'].includes(f.type))this.line(f.points,'#d5c466',Math.max(.65,1.2*z));
     for(const f of fs)if(f.type==='parking_position')this.line(f.points,'#c6b867',Math.max(.55,z),[3,3]);
-    for(const f of fs)if(['building','terminal','tower'].includes(f.type)&&f.closed){const airport= f.type==='terminal'||f.type==='tower';this.polygon(f.points,airport?'#b9c5ba':'#68796c',airport?'#d1d7c5':'#8b9a8755');}
+    for(const f of fs)if(['building','terminal','tower'].includes(f.type)&&f.closed){const airport= f.type==='terminal'||f.type==='tower';this.polygon(f.points,airport?'#7c9180':'#3a5142',airport?'#a3b199':'#62755b55');}
     const start=this.sim.data.runwayStart,end=this.sim.data.runwayEnd;const heading=Math.atan2(end.y-start.y,end.x-start.x);
     for(const [i,n] of [start,end].entries()){const p=this.screen(n);c.save();c.translate(p.x,p.y);c.rotate(heading+(i?Math.PI:0));c.fillStyle='#e8e9d9';c.font=`bold ${Math.max(10,28*z)}px sans-serif`;c.textAlign='center';c.fillText(i?'06':'24',i?0:0,-5);for(let k=-3;k<=3;k++)if(k!==0)c.fillRect(25*z,k*5*z,30*z,2.5*z);c.restore();}
     const occupied=this.sim.runwayOwner;if(occupied)this.line([start,end],'#efb76155',Math.max(10,45*z));
