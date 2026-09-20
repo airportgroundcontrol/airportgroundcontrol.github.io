@@ -25,14 +25,13 @@ import {
 } from "lucide";
 import airportData from "../data/airports/egph/geometry.json";
 import {
-  GroundSim,
   flightStatus,
   requestsAction,
   orderedFlights,
   groupedFlights,
 } from "./sim.js";
 import { AirportMap } from "./map.js";
-import { GameStorage } from "./persistence.js";
+import { GameSession } from "./session/game-session.js";
 
 const $ = (id) => document.getElementById(id);
 const icon = (name) => '<i data-lucide="' + name + '"></i>';
@@ -81,10 +80,9 @@ const shortcuts = {
   Enter: "taxi",
 };
 let sim,
+  session,
   map,
   selected = 1,
-  speed = 4,
-  paused = false,
   filter = "all";
 let planning = false,
   waypoints = [],
@@ -98,9 +96,7 @@ let lastMenu = "",
   modalPaused = null;
 let menuMode = "",
   menuChoice = "";
-let storage,
-  persistenceReady = false,
-  saveWarning = false;
+let saveWarning = false;
 const selectedPlane = () => sim?.planes.find((p) => p.id === selected);
 const canPlan = (p) =>
   p &&
@@ -108,12 +104,11 @@ const canPlan = (p) =>
     (["taxi", "taxiin"].includes(p.state) && p.held));
 const stateText = flightStatus;
 
-function saveGame() {
-  if (!persistenceReady) return;
-  const ok = storage.save(sim, {
+function readView() {
+  return {
     selected,
-    speed,
-    paused: modalPaused ?? paused,
+    speed: session.speed,
+    paused: modalPaused ?? session.paused,
     filter,
     panelVisible: !$("traffic-panel").hidden,
     labels: map.labels,
@@ -122,8 +117,13 @@ function saveGame() {
     planning,
     waypoints,
     destination,
-  });
-  if (!ok && !saveWarning) {
+  };
+}
+function saveGame() {
+  return session?.save();
+}
+function saveFailed() {
+  if (!saveWarning) {
     saveWarning = true;
     toast("Saving unavailable. Progress may be lost when this page closes.");
   }
@@ -157,7 +157,8 @@ function closeMenu(cancelPlan = false) {
   }
 }
 function pause(value) {
-  paused = value;
+  session.paused = value;
+  const paused = session.paused;
   $("pause").innerHTML = icon(paused ? "play" : "pause");
   const label = paused ? "Resume simulation" : "Pause simulation";
   $("pause").title = label + " (Space)";
@@ -168,7 +169,7 @@ function pause(value) {
 }
 function showDialog(id) {
   closeMenu();
-  modalPaused = paused;
+  modalPaused = session.paused;
   pause(true);
   $(id).showModal();
 }
@@ -356,7 +357,7 @@ function instructionChoices(p, mode) {
     .map((q) => ({ id: String(q.id), label: q.call }));
 }
 function execute(action, payload) {
-  const result = sim.command(selected, action, payload);
+  const result = session.dispatch(selected, action, payload);
   if (!result.ok) {
     toast(result.message);
     return;
@@ -366,7 +367,6 @@ function execute(action, payload) {
   $("map").focus({ preventScroll: true });
   lastMenu = "";
   render();
-  saveGame();
 }
 function issue(action) {
   if (action === "back") {
@@ -708,27 +708,27 @@ function render() {
 function restart() {
   clearTimeout(toastTimer);
   $("toast").hidden = true;
-  sim.reset();
-  clearPlan();
-  closeMenu();
-  selected = 1;
-  map.selected = 1;
-  filter = "all";
-  document
-    .querySelectorAll("[data-filter]")
-    .forEach((b) => b.classList.toggle("active", b.dataset.filter === "all"));
-  pause(false);
-  map.fit();
-  lastLogs = "";
-  lastStrips = "";
-  render();
-  saveGame();
+  session.restart(() => {
+    clearPlan();
+    closeMenu();
+    selected = sim.planes[0]?.id ?? null;
+    map.selected = selected;
+    filter = "all";
+    document
+      .querySelectorAll("[data-filter]")
+      .forEach((b) => b.classList.toggle("active", b.dataset.filter === "all"));
+    pause(false);
+    map.fit();
+    lastLogs = "";
+    lastStrips = "";
+    render();
+  });
 }
-$("pause").onclick = () => pause(!paused);
+$("pause").onclick = () => pause(!session.paused);
 document.querySelectorAll("[data-speed]").forEach(
   (b) =>
     (b.onclick = () => {
-      speed = +b.dataset.speed;
+      session.speed = +b.dataset.speed;
       document
         .querySelectorAll("[data-speed]")
         .forEach((x) => x.classList.toggle("active", x === b));
@@ -841,7 +841,7 @@ document.addEventListener("keydown", (e) => {
   if (e.code === "Space") {
     if (target.matches("button,summary")) return;
     e.preventDefault();
-    pause(!paused);
+    pause(!session.paused);
     return;
   }
   const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
@@ -883,16 +883,29 @@ window.addEventListener("resize", () => {
 for (const event of ["click", "change", "keydown", "pointerup"])
   document.addEventListener(event, () => queueMicrotask(saveGame));
 document.querySelector(".communications").addEventListener("toggle", saveGame);
-window.addEventListener("pagehide", saveGame);
+window.addEventListener("pagehide", (event) => {
+  if (event.persisted) saveGame();
+  else session?.dispose();
+});
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) saveGame();
 });
 
 async function start() {
   try {
-    sim = new GroundSim(airportData);
-    storage = new GameStorage(airportData);
-    const saved = storage.load(sim);
+    session = new GameSession(airportData, {
+      readView,
+      onSaveError: saveFailed,
+      onCommand: (result, aircraftId) => {
+        if (result.ok && aircraftId === selected) {
+          clearPlan();
+          closeMenu();
+        }
+      },
+    });
+    sim = session.sim;
+    const saved = session.restored;
+    selected = sim.planes[0]?.id ?? null;
     map = new AirportMap(
       $("map"),
       sim,
@@ -913,7 +926,7 @@ async function start() {
       const ui = saved.ui;
       selected = ui.selected;
       map.selected = selected;
-      speed = ui.speed;
+      session.speed = ui.speed;
       filter = ui.filter;
       $("traffic-panel").hidden = !ui.panelVisible;
       $("toggle-panel").classList.toggle("active", ui.panelVisible);
@@ -927,7 +940,7 @@ async function start() {
       document
         .querySelectorAll("[data-speed]")
         .forEach((b) =>
-          b.classList.toggle("active", +b.dataset.speed === speed),
+          b.classList.toggle("active", +b.dataset.speed === session.speed),
         );
       document
         .querySelectorAll("[data-filter]")
@@ -947,13 +960,13 @@ async function start() {
     );
     dataDownload.download = "egph.json";
     render();
-    persistenceReady = true;
     if (saved.status === "invalid")
       toast(
         "Saved game could not be restored. A recovery copy was kept where storage allows.",
       );
-    saveGame();
+    session.activate();
     window.groundControl = {
+      session,
       sim,
       map,
       select,
@@ -1052,13 +1065,16 @@ async function start() {
               typeof input.action !== "string"
             )
               throw new Error("Invalid clearance");
-            const result = sim.command(input.flightId, input.action, input);
+            const result = session.dispatch(
+              input.flightId,
+              input.action,
+              input,
+            );
             if (result.ok && input.flightId === selected) {
               clearPlan();
               closeMenu();
             }
             render();
-            if (result.ok) saveGame();
             return result;
           },
         },
@@ -1072,28 +1088,18 @@ async function start() {
       }
     }
     let previous = performance.now(),
-      lastUI = 0,
-      lastSave = previous;
+      lastUI = 0;
     function frame(now) {
+      if (session.disposed) return;
       const dt = Math.min((now - previous) / 1000, 0.1);
       previous = now;
-      if (!paused) {
-        let remaining = dt * speed;
-        while (remaining > 0) {
-          const step = Math.min(0.1, remaining);
-          sim.tick(step);
-          remaining -= step;
-        }
-      }
+      session.advance(dt);
       map.draw();
       if (now - lastUI > 150) {
         render();
         lastUI = now;
       }
-      if (now - lastSave >= 1000) {
-        saveGame();
-        lastSave = now;
-      }
+      session.autosave(now);
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
