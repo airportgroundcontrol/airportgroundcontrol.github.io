@@ -2,6 +2,7 @@ import { createIcons, Plane, ChevronDown, Pause, Play, RotateCcw, Sun, Plus, Min
 import airportData from '../dist/data/egph.json';
 import { GroundSim, flightStatus, requestsAction, orderedFlights, groupedFlights } from './sim.js';
 import { AirportMap } from './map.js';
+import { GameStorage } from './persistence.js';
 
 const $ = id => document.getElementById(id);
 const icon = name => '<i data-lucide="' + name + '"></i>';
@@ -13,9 +14,21 @@ let sim, map, selected = 1, speed = 4, paused = false, filter = 'all';
 let planning = false, waypoints = [], destination = '', menuOpen = false, menuAnchor = null;
 let lastMenu = '', lastStrips = '', lastLogs = '', toastTimer, modalPaused = null;
 let menuMode = '', menuChoice = '';
+let storage, persistenceReady = false, saveWarning = false;
 const selectedPlane = () => sim?.planes.find(p => p.id === selected);
 const canPlan = p => p && (['ready', 'inbound', 'atpoint', 'holding'].includes(p.state) || (['taxi', 'taxiin'].includes(p.state) && p.held));
 const stateText = flightStatus;
+
+function saveGame() {
+  if (!persistenceReady) return;
+  const ok = storage.save(sim, {
+    selected, speed, paused: modalPaused ?? paused, filter,
+    panelVisible: !$('traffic-panel').hidden, labels: map.labels,
+    radioOpen: document.querySelector('.communications').open, camera: map.camera,
+    planning, waypoints, destination
+  });
+  if (!ok && !saveWarning) { saveWarning = true; toast('Saving unavailable. Progress may be lost when this page closes.'); }
+}
 
 function toast(message) {
   $('toast').textContent = message;
@@ -43,6 +56,7 @@ function pause(value) {
   $('pause').setAttribute('aria-label', label);
   $('simulation-status').textContent = paused ? 'PAUSED' : 'RUNNING';
   refreshIcons();
+  saveGame();
 }
 function showDialog(id) {
   closeMenu();
@@ -104,6 +118,7 @@ function preview() {
   map.waypoints = waypoints;
   if (!map.preview.length) toast('No taxi route is available to this destination.');
   lastMenu = ''; render();
+  saveGame();
 }
 function options(p) {
   if (!p || p.state === 'done') return [];
@@ -142,6 +157,7 @@ function execute(action, payload) {
   clearPlan(); closeMenu();
   $('map').focus({ preventScroll: true });
   lastMenu = ''; render();
+  saveGame();
 }
 function issue(action) {
   if (action === 'back') { menuMode = ''; menuChoice = ''; map.focusHold = null; lastMenu = ''; render(); return; }
@@ -255,6 +271,7 @@ function restart() {
   sim.reset(); clearPlan(); closeMenu(); selected = 1; map.selected = 1;
   filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
   pause(false); map.fit(); lastLogs = ''; lastStrips = ''; render();
+  saveGame();
 }
 $('pause').onclick = () => pause(!paused);
 document.querySelectorAll('[data-speed]').forEach(b => b.onclick = () => {
@@ -280,7 +297,7 @@ $('airport-button').onclick = () => showDialog('airport-dialog');
 $('select-edinburgh').onclick = () => $('airport-dialog').close();
 $('restart').onclick = () => showDialog('restart-dialog');
 $('cancel-restart').onclick = () => $('restart-dialog').close();
-$('confirm-restart').onclick = () => { $('restart-dialog').close(); restart(); };
+$('confirm-restart').onclick = () => { $('restart-dialog').close(); modalPaused = null; restart(); };
 $('shortcuts').onclick = () => showDialog('shortcuts-dialog');
 document.addEventListener('pointerdown', e => {
   if (menuOpen && !$('aircraft-menu').contains(e.target) && !$('strips').contains(e.target) && e.target !== $('map')) closeMenu();
@@ -318,10 +335,16 @@ document.addEventListener('keydown', e => {
   e.preventDefault(); issue(action);
 });
 window.addEventListener('resize', () => { closeMenu(); });
+for (const event of ['click', 'change', 'keydown', 'pointerup']) document.addEventListener(event, () => queueMicrotask(saveGame));
+document.querySelector('.communications').addEventListener('toggle', saveGame);
+window.addEventListener('pagehide', saveGame);
+document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
 
 async function start() {
   try {
     sim = new GroundSim(airportData);
+    storage = new GameStorage(airportData);
+    const saved = storage.load(sim);
     map = new AirportMap($('map'), sim, select, id => {
       if (canPlan(selectedPlane())) {
         if (!planning) preview();
@@ -331,10 +354,30 @@ async function start() {
     }, () => closeMenu());
     $('map-loading').hidden = true;
     if (innerWidth <= 600) document.querySelector('.communications').open = false;
+    if (saved.status === 'restored') {
+      const ui = saved.ui;
+      selected = ui.selected; map.selected = selected; speed = ui.speed; filter = ui.filter;
+      $('traffic-panel').hidden = !ui.panelVisible;
+      $('toggle-panel').classList.toggle('active', ui.panelVisible);
+      $('toggle-panel').setAttribute('aria-expanded', String(ui.panelVisible));
+      map.labels = ui.labels;
+      $('labels').classList.toggle('active', ui.labels);
+      $('labels').setAttribute('aria-pressed', String(ui.labels));
+      if (ui.radioOpen !== null) document.querySelector('.communications').open = ui.radioOpen;
+      if (ui.camera) map.camera = ui.camera;
+      document.querySelectorAll('[data-speed]').forEach(b => b.classList.toggle('active', +b.dataset.speed === speed));
+      document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === filter));
+      pause(ui.paused);
+      destination = ui.destination;
+      if (ui.planning && canPlan(selectedPlane())) { waypoints = ui.waypoints; preview(); }
+    }
     const dataDownload = $('airport-dialog').querySelector('a');
     dataDownload.href = URL.createObjectURL(new Blob([JSON.stringify(airportData)], { type: 'application/json' }));
     dataDownload.download = 'egph.json';
     render();
+    persistenceReady = true;
+    if (saved.status === 'invalid') toast('Saved game could not be restored. A recovery copy was kept where storage allows.');
+    saveGame();
     window.groundControl = { sim, map, select, issue, preview, setPaused: pause, getState: () => ({
       time: sim.time, score: sim.score, completed: sim.completed, runway: sim.runwayOwner,
       flights: sim.planes.map(({ id, call, state, x, y, stand, held, holdLimit, holdReached, trafficOrder, trafficWaiting }) => ({ id, call, state, x, y, stand, held, holdLimit, holdReached, trafficOrder, trafficWaiting }))
@@ -349,12 +392,12 @@ async function start() {
           if (!Number.isInteger(input.flightId) || typeof input.action !== 'string') throw new Error('Invalid clearance');
           const result = sim.command(input.flightId, input.action, input);
           if (result.ok && input.flightId === selected) { clearPlan(); closeMenu(); }
-          render(); return result;
+          render(); if (result.ok) saveGame(); return result;
         } }
       ];
       for (const tool of tools) { try { Promise.resolve(context.registerTool(tool, { signal: controller.signal })).catch(() => {}); } catch {} }
     }
-    let previous = performance.now(), lastUI = 0;
+    let previous = performance.now(), lastUI = 0, lastSave = previous;
     function frame(now) {
       const dt = Math.min((now - previous) / 1000, .1); previous = now;
       if (!paused) {
@@ -363,6 +406,7 @@ async function start() {
       }
       map.draw();
       if (now - lastUI > 150) { render(); lastUI = now; }
+      if (now - lastSave >= 1000) { saveGame(); lastSave = now; }
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
