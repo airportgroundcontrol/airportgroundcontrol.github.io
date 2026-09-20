@@ -127,11 +127,17 @@ function issue(action) {
   if (action === 'preview') {
     if (!menuOpen) select(selected);
     preview();
+    if (map.preview.length >= 2) {
+      closeMenu();
+      $('map').focus({ preventScroll: true });
+    }
     return;
   }
   const result = sim.command(selected, action, { stand: destination, waypoints });
   if (!result.ok) { toast(result.message); return; }
   clearPlan();
+  closeMenu();
+  $('map').focus({ preventScroll: true });
   lastMenu = '';
   render();
 }
@@ -151,7 +157,7 @@ function menuHTML(p) {
     '<button role="menuitem" class="menu-action ' + (a.primary ? 'primary-action' : '') + '" data-action="' + a.id + '" aria-keyshortcuts="' + a.key + '" ' + (a.disabled ? 'disabled title="Clearance unavailable"' : '') + '>' + icon(a.glyph) + '<span class="action-label">' + a.label + '</span><kbd>' + a.key + '</kbd></button>'
   ).join('') + '</div>';
   if (!actions.length) content += '<div class="clearance-note">' + (p.state === 'parked' ? 'Turnaround in progress' : p.state === 'done' ? 'Handoff complete' : 'Clearance active') + '</div>';
-  return '<div class="menu-header"><div class="menu-heading"><h2>' + p.call + '</h2><span class="plane-type">' + p.type + '</span></div><button class="icon-button close-menu" id="close-menu" aria-label="Close aircraft actions" title="Close (Esc)">' + icon('x') + '</button><div class="flight-state">' + stateText(p) + '</div></div><div class="menu-meta"><span>' + (arriving ? 'ARRIVAL' : 'DEPARTURE') + '</span><span>' + (p.stand ? 'STAND ' + p.stand : 'RWY 24') + '</span></div>' + content;
+  return content;
 }
 function render() {
   if (!sim) return;
@@ -174,7 +180,6 @@ function render() {
       const focusedId = menu.contains(document.activeElement) ? document.activeElement.id : null;
       menu.innerHTML = html; lastMenu = html;
       menu.querySelectorAll('[data-action]').forEach(b => b.onclick = () => issue(b.dataset.action));
-      $('close-menu').onclick = () => { closeMenu(); $('map').focus({ preventScroll: true }); };
       if ($('stand-select')) $('stand-select').onchange = e => { destination = e.target.value; if (planning) preview(); };
       if (focusedAction) (menu.querySelector('[data-action="' + focusedAction + '"]') || menu).focus({ preventScroll: true });
       else if (focusedId && $(focusedId)) $(focusedId).focus({ preventScroll: true });

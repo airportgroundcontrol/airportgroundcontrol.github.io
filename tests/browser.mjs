@@ -27,7 +27,7 @@ const advance = async (id, target) => {
 const clickAircraft = async (id, button = 'left') => {
   const point = await page.evaluate(id => groundControl.map.screen(groundControl.sim.planes.find(p => p.id === id)), id);
   await page.mouse.click(point.x, point.y, { button });
-  await page.waitForFunction(id => !document.getElementById('aircraft-menu').hidden && document.querySelector('#aircraft-menu h2')?.textContent === groundControl.sim.planes.find(p => p.id === id)?.call, id);
+  await page.waitForFunction(id => !document.getElementById('aircraft-menu').hidden && document.querySelector('#aircraft-menu [role="menu"]')?.getAttribute('aria-label') === 'Clearances for ' + groundControl.sim.planes.find(p => p.id === id)?.call, id);
 };
 const menuAction = label => page.getByRole('menuitem', { name: label });
 const settled = () => page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
@@ -39,6 +39,7 @@ assert.equal(await menuAction('Cleared for takeoff').count(), 0);
 await page.screenshot({ path: '../work/dark-context-desktop.png' });
 await page.keyboard.press('p');
 assert.equal(await state(1), 'pushback');
+assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 await page.waitForFunction(() => document.querySelector('#strips .strip:last-child')?.dataset.flight === '1');
 await page.keyboard.press('h');
 assert.equal(await page.evaluate(() => groundControl.sim.planes[0].held), true);
@@ -51,7 +52,8 @@ await page.keyboard.press('Escape');
 assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 assert.equal(await page.evaluate(() => groundControl.map.preview.length), 0);
 await page.keyboard.press('t');
-assert.equal(await page.locator('#aircraft-menu').isVisible(), true);
+assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
+assert.equal(await page.locator('#route-banner').isVisible(), true);
 await page.screenshot({ path: '../work/dark-taxi-preview.png' });
 await page.keyboard.press('Enter');
 assert.equal(await state(1), 'taxi');
@@ -62,6 +64,7 @@ await page.getByRole('button', { name: 'Select KLM927' }).click();
 assert.equal(await menuAction('Clear to land').isDisabled(), true);
 await page.keyboard.press('l');
 assert.equal(await state(4), 'approach');
+assert.equal(await page.locator('#aircraft-menu').isVisible(), true, 'Rejected commands keep the menu open');
 await page.keyboard.press('g');
 assert.equal(await page.evaluate(() => groundControl.sim.planes.find(p => p.id === 4).wait), 0);
 await page.getByRole('button', { name: 'Select BAW1439' }).click();
@@ -69,7 +72,9 @@ await page.keyboard.press('d');
 await advance(1, 'done');
 await page.getByRole('button', { name: 'Select KLM927' }).click();
 await page.keyboard.press('l');
+assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 await advance(4, 'inbound');
+await page.getByRole('button', { name: 'Select KLM927' }).click();
 await page.getByLabel('DESTINATION STAND').selectOption('5');
 await page.getByLabel('DESTINATION STAND').focus();
 const radioBeforeTyping = await page.evaluate(() => JSON.stringify(groundControl.sim.logs));
@@ -79,7 +84,10 @@ assert.equal(await page.evaluate(() => JSON.stringify(groundControl.sim.logs)), 
 assert.equal(await page.evaluate(() => document.activeElement.id), 'stand-select');
 await page.locator('#map').focus();
 await page.keyboard.press('t');
+assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
+await page.getByRole('button', { name: 'Select KLM927' }).click();
 await menuAction('Issue taxi clearance').click();
+assert.equal(await page.locator('#aircraft-menu').isVisible(), false);
 await advance(4, 'parked');
 assert.equal(await page.evaluate(() => groundControl.sim.completed), 2);
 
@@ -133,13 +141,26 @@ for (const viewport of [{ width: 1440, height: 960 }, { width: 1280, height: 800
   assert.deepEqual(metrics.canvas, { x: 0, y: 0, width: metrics.width, height: metrics.height });
   assert.equal(metrics.scheme, 'dark');
   assert.ok(metrics.colors > 20);
+  const panel = await page.locator('#traffic-panel').boundingBox();
+  const topbar = await page.locator('.topbar').boundingBox();
+  assert.equal(panel.y, topbar.height);
+  assert.equal(panel.y + panel.height, viewport.height);
+  if (viewport.width <= 600) {
+    await page.getByRole('button', { name: 'Toggle flight panel' }).click();
+    await page.getByRole('button', { name: 'Fit airport' }).click();
+    await settled();
+  }
   await clickAircraft(1, 'right');
   await settled();
   const box = await page.locator('#aircraft-menu').boundingBox();
   const header = await page.locator('.topbar').boundingBox();
+  assert.ok(box.width <= 240 && box.height < 80, 'Pushback menu is compact');
+  assert.equal(await page.locator('#aircraft-menu h2, #aircraft-menu .plane-type').count(), 0);
+  assert.equal(await page.locator('#aircraft-menu').innerText(), 'Approve pushback\nP');
   assert.ok(box.x >= 0 && box.y >= header.height && box.x + box.width <= viewport.width && box.y + box.height <= viewport.height, JSON.stringify({ viewport, box }));
   await page.screenshot({ path: '../work/dark-menu-' + viewport.width + '.png' });
   await page.keyboard.press('Escape');
+  if (viewport.width <= 600) await page.getByRole('button', { name: 'Toggle flight panel' }).click();
 }
 await page.evaluate(() => { groundControl.sim.time = 1201; groundControl.sim.tick(.25); });
 assert.ok(await page.evaluate(() => groundControl.sim.time > 1201));
