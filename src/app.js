@@ -76,6 +76,7 @@ function select(id, anchor) {
   menuAnchor = anchor || map.screen(p);
   lastMenu = '';
   render();
+  $('aircraft-menu').focus({ preventScroll: true });
 }
 function positionMenu() {
   if (!menuOpen) return;
@@ -170,11 +171,13 @@ function render() {
     menu.hidden = false;
     if (html !== lastMenu) {
       const focusedAction = menu.contains(document.activeElement) ? document.activeElement.dataset.action : null;
+      const focusedId = menu.contains(document.activeElement) ? document.activeElement.id : null;
       menu.innerHTML = html; lastMenu = html;
       menu.querySelectorAll('[data-action]').forEach(b => b.onclick = () => issue(b.dataset.action));
       $('close-menu').onclick = () => { closeMenu(); $('map').focus({ preventScroll: true }); };
       if ($('stand-select')) $('stand-select').onchange = e => { destination = e.target.value; if (planning) preview(); };
       if (focusedAction) (menu.querySelector('[data-action="' + focusedAction + '"]') || menu).focus({ preventScroll: true });
+      else if (focusedId && $(focusedId)) $(focusedId).focus({ preventScroll: true });
       refreshIcons();
     }
     positionMenu();
@@ -200,6 +203,7 @@ function render() {
   $('route-issue').disabled = map.preview.length < 2;
 }
 function restart() {
+  clearTimeout(toastTimer); $('toast').hidden = true;
   sim.reset(); clearPlan(); closeMenu(); selected = 1; map.selected = 1;
   filter = 'all'; document.querySelectorAll('[data-filter]').forEach(b => b.classList.toggle('active', b.dataset.filter === 'all'));
   pause(false); map.fit(); lastLogs = ''; lastStrips = ''; render();
