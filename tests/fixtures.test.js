@@ -5,7 +5,9 @@ import { createHash } from "node:crypto";
 import { GroundSim } from "../src/sim.js";
 import { GameStorage, captureSimulation } from "../src/persistence.js";
 const data = JSON.parse(
-  fs.readFileSync(new URL("../dist/data/egph.json", import.meta.url)),
+  fs.readFileSync(
+    new URL("../data/airports/egph/geometry.json", import.meta.url),
+  ),
 );
 const directory = new URL("./fixtures/v1/", import.meta.url);
 const manifest = JSON.parse(

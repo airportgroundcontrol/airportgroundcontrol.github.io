@@ -1,8 +1,16 @@
 # Ground Control: Architecture Implementation Plan
 
-Status: proposed implementation sequence, not implemented.
+Status: first work package implemented: Phase 0 baseline protection and Phase 1 source layout, formatting and initial typed contracts. Phases 2-7 remain planned.
 Baseline: gameplay commit `fb7b28f85f486d62a2cb5040ccc13e3dc212aa25`; handoff commit `3acbe2295a00cd3442ece851e95aa7db6e440479`.
 Goal: evolve the playable MVP into a maintainable, multi-airport ground-control game without a rewrite, a backend, or lost progress.
+
+## Implementation Checkpoint
+
+- Phase 0: 23 archived v1 saves with continuation digests, configurable/self-contained browser runner, desktop/mobile references and same-machine performance report under `tests/baselines/`.
+- Phase 1: dedicated mechanical-format commit; authored UI in `web/`, unchanged airport bytes in `data/airports/egph/geometry.json`, fully generated/ignored `dist/`, checked offline packaging, pinned formatter/TypeScript tooling and initial domain contracts. Strict TypeScript currently checks contracts and the actual traffic-geometry JavaScript module, not the whole engine/UI. Scenario types describe the future boundary; scenario configuration is not yet wired into gameplay.
+- Save schema remains version 1. There are no gameplay, timing-policy, airport-network or UI changes in this package.
+- Next: Phase 2 session ownership and save evolution. Continue expanding type coverage at extracted boundaries. Do not start additional airports or multi-runway behavior before those prerequisites.
+- Publishing this checkpoint is currently blocked: the connected account returns `Sites project not found` for the existing site. Local development and testing are unaffected; existing hosting metadata/audience remain untouched.
 
 ## Decisions and Guardrails
 
@@ -206,4 +214,4 @@ For every phase:
 
 Start with Phase 0, then Phase 1's formatting/build-layout work and initial typed contracts. Do not begin multi-runway behavior or new airport ingestion in that package. Its success is intentionally unexciting: the same playable game, clearer source, reproducible checks, preserved saves and a foundation for the next phase.
 
-Phases 2-6 should each be separate implementation tasks, potentially multiple reviewable changes. Reassess scope after each gate rather than promising a single large rewrite or a fixed completion date. This plan authorizes no implementation by itself.
+Phases 2-6 should each be separate implementation tasks, potentially multiple reviewable changes. Reassess scope after each gate rather than promising a single large rewrite or a fixed completion date. Later phases remain separate tasks, not part of the accepted first work package.

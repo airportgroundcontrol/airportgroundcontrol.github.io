@@ -1,5 +1,13 @@
 import { build } from "esbuild";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
+process.chdir(fileURLToPath(new URL("../", import.meta.url)));
+fs.rmSync("dist", { recursive: true, force: true });
+fs.mkdirSync("dist/data", { recursive: true });
+for (const name of ["index.html", "style.css"]) {
+  fs.copyFileSync(`web/${name}`, `dist/${name}`);
+}
+fs.copyFileSync("data/airports/egph/geometry.json", "dist/data/egph.json");
 await build({
   entryPoints: ["src/app.js"],
   bundle: true,
@@ -9,6 +17,13 @@ await build({
   legalComments: "eof",
 });
 const html = fs.readFileSync("dist/index.html", "utf8");
+for (const marker of [
+  '<link rel="stylesheet" href="style.css">',
+  '<script type="module" src="app.js"></script>',
+]) {
+  if (html.split(marker).length !== 2)
+    throw new Error(`Expected exactly one offline embedding marker: ${marker}`);
+}
 const standalone = html
   .replace(
     '<link rel="stylesheet" href="style.css">',

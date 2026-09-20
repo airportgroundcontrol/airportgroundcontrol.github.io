@@ -14,7 +14,9 @@ if (fs.existsSync(directory))
     "Archive already exists. Review baseline changes before replacing it.",
   );
 const data = JSON.parse(
-  fs.readFileSync(new URL("../dist/data/egph.json", import.meta.url)),
+  fs.readFileSync(
+    new URL("../data/airports/egph/geometry.json", import.meta.url),
+  ),
 );
 const baselineCommit = execFileSync("git", ["rev-parse", "HEAD"], {
   encoding: "utf8",

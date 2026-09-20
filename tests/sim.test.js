@@ -8,7 +8,9 @@ import {
   requestsAction,
 } from "../src/sim.js";
 const data = JSON.parse(
-  fs.readFileSync(new URL("../dist/data/egph.json", import.meta.url)),
+  fs.readFileSync(
+    new URL("../data/airports/egph/geometry.json", import.meta.url),
+  ),
 );
 function setup() {
   const sim = new GroundSim(data);

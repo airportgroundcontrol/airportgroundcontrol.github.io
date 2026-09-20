@@ -23,7 +23,7 @@ import {
   Keyboard,
   PanelRight,
 } from "lucide";
-import airportData from "../dist/data/egph.json";
+import airportData from "../data/airports/egph/geometry.json";
 import {
   GroundSim,
   flightStatus,

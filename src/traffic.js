@@ -1,11 +1,19 @@
 export const separation = 60;
+/** @typedef {import('./domain/contracts').Point} Point */
+/** @typedef {import('./domain/contracts').TrafficRoute} TrafficRoute */
+/** @param {Point} a @param {Point} b */
 const length = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+/** @param {Point} a @param {Point} b */
 const cross = (a, b) => a.x * b.y - a.y * b.x;
+/** @param {Point} a @param {Point} b */
 const dot = (a, b) => a.x * b.x + a.y * b.y;
+/** @param {Point} a @param {Point} b */
 const sub = (a, b) => ({ x: a.x - b.x, y: a.y - b.y });
 
+/** @param {TrafficRoute} plane @returns {import('./domain/contracts').RouteSegment[]} */
 export function segments(plane, horizon = Infinity) {
   const result = [];
+  /** @type {Point} */
   let start = plane,
     travelled = 0;
   for (const end of plane.route) {
@@ -18,6 +26,7 @@ export function segments(plane, horizon = Infinity) {
   return result;
 }
 
+/** @param {TrafficRoute} plane @param {Point} point */
 export function distanceAhead(plane, point, corridor = 24, horizon = 300) {
   for (const segment of segments(plane, horizon)) {
     const v = sub(segment.end, segment.start),
@@ -32,11 +41,13 @@ export function distanceAhead(plane, point, corridor = 24, horizon = 300) {
 }
 
 // Intersections include collinear overlaps, so merging and same-taxiway queues share one model.
+/** @param {TrafficRoute} a @param {TrafficRoute} b @returns {import('./domain/contracts').RouteConflict | null} */
 export function routeConflict(
   a,
   b,
   { aligned = false, horizon = Infinity } = {},
 ) {
+  /** @type {import('./domain/contracts').RouteConflict | null} */
   let first = null;
   for (const sa of segments(a, horizon))
     for (const sb of segments(b, horizon)) {
@@ -80,6 +91,7 @@ export function routeConflict(
   return first;
 }
 
+/** @param {Pick<import('./domain/contracts').TrafficOrder, 'point' | 'releaseAt'>} order @param {TrafficRoute | null | undefined} target */
 export function targetCleared(order, target) {
   if (!target || target.state === "done") return true;
   if (length(target, order.point) < separation) return false;

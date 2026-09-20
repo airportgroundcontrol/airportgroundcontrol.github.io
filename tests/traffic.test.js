@@ -9,7 +9,9 @@ import {
 } from "../src/sim.js";
 import { routeConflict, separation } from "../src/traffic.js";
 const data = JSON.parse(
-  fs.readFileSync(new URL("../dist/data/egph.json", import.meta.url)),
+  fs.readFileSync(
+    new URL("../data/airports/egph/geometry.json", import.meta.url),
+  ),
 );
 const setup = () => {
   const s = new GroundSim(data);

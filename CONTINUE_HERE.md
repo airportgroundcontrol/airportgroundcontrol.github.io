@@ -18,7 +18,7 @@ The new account must itself have access to Codex/local development, and the app 
 
 The ignored `portability/` folder contains two snapshots created with this handoff:
 
-- `ground-control-source.zip`: complete tracked source, lockfile, airport data, tests, docs, built site and offline game. No Git history or installed dependencies.
+- `ground-control-source.zip`: complete tracked source, lockfile, airport data, tests, docs and offline game. Generated `dist/` is rebuilt with npm, not included. No Git history or installed dependencies.
 - `ground-control-history.bundle`: the local Git history and committed files. No remote credentials or Codex authentication state.
 
 On another machine, either extract the ZIP and open the extracted folder, or restore history with:
@@ -37,33 +37,31 @@ From the project root, using a current supported Node.js installation (Node 22+ 
 
 ```sh
 npm ci
-npm run build
-npm test
+npm run verify
 npm run dev
 ```
 
 Open `http://localhost:4173`. The static server is only a local development convenience; gameplay has no backend. `Ground Control.html` can also be opened directly offline without Node or a server.
 
-In a second terminal, with Google Chrome installed:
+With Google Chrome installed, browser tests can also run independently against the latest build:
 
 ```sh
-mkdir -p ../work
-node tests/browser.mjs
-node tests/traffic-browser.mjs
-node tests/persistence-browser.mjs
+npm run test:browser
+npm run typecheck
+npm run format:check
 ```
 
-The browser tests use Playwright with `channel: 'chrome'` and save screenshots in `../work`. If port 4173 is occupied by another project, use a different preview port and adjust the browser-test URLs together rather than terminating another project's process.
+The browser runner owns a temporary server on an available port and closes its browsers/server on completion or failure. It uses installed Chrome by default and saves screenshots in ignored `test-results/`. Override `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` when needed. If preview port 4173 is occupied, use `npm run dev -- -p 4174` rather than terminating another project's process. Browser tests do not need that preview server.
 
 ## Current State
 
-- Latest gameplay implementation commit before this handoff: `fb7b28f85f486d62a2cb5040ccc13e3dc212aa25`.
-- Last gameplay verification: 31 unit tests plus all three browser suites passed, including mobile layouts and offline save/reload.
+- First architecture package: baseline commit `c811f0d`, dedicated mechanical-format commit `1a85858`, followed by source-layout/type-contract work. Use `git log -3 --oneline` for exact current checkpoints; original gameplay baseline is `fb7b28f85f486d62a2cb5040ccc13e3dc212aa25`.
+- Verification now covers 55 unit/fixture tests, strict initial type checks, build/offline packaging checks and all three browser suites, including five responsive viewports and offline save/reload. Archived v1 saves and performance/visual references are under `tests/fixtures/v1/` and `tests/baselines/`.
 - Gameplay: endless Edinburgh arrivals/departures, pushback, graph taxi routing, holds, follow/give-way, runway entry/takeoff, grouping and subtle request pulses.
 - Persistence: localStorage per airport, versioned/validated snapshots, save on commands, periodic autosave, restore of simulation and view state. No elapsed-time catch-up while closed.
 - Current limits: one airport/active runway; simplified separation and aircraft physics; no stop-bar simulation, multiplayer, account sync or save export/import.
-- Work requested next is recorded in `ROADMAP.md`; those architecture changes are not yet implemented.
-- The phased proposal is in `ARCHITECTURE_PLAN.md`. It defines acceptance gates and save-compatibility work; implementation has not started. Read it before selecting an architecture task.
+- Phase 0 and Phase 1's first package are implemented, with gameplay, save version 1 and airport data bytes unchanged. Initial contracts and traffic geometry are type checked; full engine/UI conversion remains incremental.
+- Next recommended task: Phase 2 session ownership and save evolution in `ARCHITECTURE_PLAN.md`, including explicit recovery, export/import and single-writer tab ownership. Airport/scenario extraction, UI splitting, timing and multiple runways remain planned, not implemented.
 
 ## Architecture and Editing Map
 
@@ -72,9 +70,11 @@ The browser tests use Playwright with `channel: 'chrome'` and save screenshots i
 - `src/map.js`: Canvas rendering, camera, hit testing and map interactions.
 - `src/app.js`: UI, input handlers, menu state, flight groups and simulation loop.
 - `src/persistence.js`: save format, validation and recovery.
-- `dist/index.html`, `dist/style.css`: authored UI source. Keep these when cleaning generated files.
-- `dist/data/egph.json`: real OSM-derived geometry and routing graph; preserve attribution/license.
-- `scripts/build.mjs`: bundles `src/app.js` into `dist/app.js` and regenerates the offline HTML.
+- `web/index.html`, `web/style.css`: authored UI source.
+- `data/airports/egph/geometry.json`: real OSM-derived geometry and routing graph; preserve attribution/license and compatibility hash.
+- `src/domain/contracts.ts`: initial branded IDs, airport/scenario, aircraft, command, UI and save contracts. Scenario configuration is not yet consumed by the engine.
+- `scripts/build.mjs`: cleans/recreates ignored `dist/`, copies UI/data, bundles JavaScript and regenerates the tracked offline HTML. Published filenames are unchanged.
+- `scripts/test-browser.mjs`: owns the temporary verification server; `tests/browser-support.mjs` centralizes browser/environment/output settings.
 - `scripts/import-airport.mjs`: optional offline data importer. Existing development does not require refetching airport data.
 
 ## Hosting and Account Access
@@ -82,6 +82,8 @@ The browser tests use Playwright with `channel: 'chrome'` and save screenshots i
 Existing live URL: https://ground-control-edinburgh.marco-boelling453907.chatgpt.site
 
 Existing Sites project: `appgprj_6aafae3cccd0819181f9d719d008f9e6`, preserved in `.openai/hosting.json`. Last gameplay publication was version 5. The site was owner-private when published.
+
+The architecture checkpoint was not published: on 2026-09-20 the current Sites connection returned `Sites project not found`. Do not treat the hosted version as updated or create replacement hosting automatically. Existing site identity/access settings were not modified; local files and verification do not depend on that account.
 
 Local development/build/testing does not require the Sites plugin or this account's hosted repository. Publishing to that existing site is different: the signed-in account needs the required permissions and an available Sites connection. Verify access when publishing is requested. If unavailable, continue locally and resolve authorized sharing/ownership or separately requested replacement hosting with the user. Do not invent a transfer, guess credentials, change the site's audience, or silently replace its ID.
 

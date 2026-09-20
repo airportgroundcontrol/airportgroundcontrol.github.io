@@ -1,6 +1,6 @@
 # Ground Control Roadmap
 
-Requested architecture follow-up. These are queued, not implemented by creating this list.
+Architecture follow-up. The first foundation package is implemented; unchecked items remain queued.
 
 Implementation order, module boundaries, save migrations and phase acceptance criteria are detailed in [ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md). Start with its baseline-protection phase; the checklist below is scope, not execution order.
 
@@ -9,8 +9,8 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 - [ ] Extract airport/scenario configuration: initial stands, active runway, holding points, arrival exits, traffic schedules and runway-specific UI/radio text. Remove Edinburgh/24/D1 assumptions from shared logic.
 - [ ] Introduce per-runway occupancy and clearance handling before supporting multiple active runways. Preserve the current single-runway behavior with regression tests.
 - [ ] Split `src/app.js` into focused menu, keyboard, flight-panel and session coordination modules without redesigning the current interface.
-- [ ] Add typed aircraft states, commands, airport configuration and save contracts (TypeScript or checked JSDoc; choose during implementation).
-- [ ] Format dense simulation/map source for maintainability, separately from behavioral changes.
+- [x] Add initial typed aircraft states, commands, airport/scenario configuration and save contracts with strict TypeScript and checked traffic geometry. Engine/UI conversion remains incremental.
+- [x] Format dense simulation/map source for maintainability, separately from behavioral changes.
 - [ ] Extend deterministic scenario tests alongside each new rule. Add explicit save migrations whenever a state schema or airport routing revision changes.
 
 ## Later Product Work
@@ -30,6 +30,9 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 
 ## Already Delivered
 
+- [x] Archived v1 save/continuation fixtures, visual references and performance baseline.
+- [x] One-command verification with owned temporary browser server, configurable outputs and offline checks.
+- [x] Authored UI/data outside `dist/`; clean reproducible static/offline builds.
 - [x] Browser-only Edinburgh game on real OpenStreetMap ground geometry.
 - [x] Endless play, dark full-screen map, full-height right panel and top-bar KPIs.
 - [x] Compact aircraft action menus and keyboard shortcuts.

@@ -10,7 +10,9 @@ import {
   airportRevision,
 } from "../src/persistence.js";
 const data = JSON.parse(
-  fs.readFileSync(new URL("../dist/data/egph.json", import.meta.url)),
+  fs.readFileSync(
+    new URL("../data/airports/egph/geometry.json", import.meta.url),
+  ),
 );
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const memory = () => {

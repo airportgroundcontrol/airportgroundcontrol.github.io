@@ -172,8 +172,8 @@ const airport = {
   departureHold: holding?.id,
   arrivalExit: arrival?.id,
 };
-fs.mkdirSync("dist/data", { recursive: true });
-fs.writeFileSync("dist/data/egph.json", JSON.stringify(airport));
+fs.mkdirSync("data/airports/egph", { recursive: true });
+fs.writeFileSync("data/airports/egph/geometry.json", JSON.stringify(airport));
 console.log(
   JSON.stringify(
     {

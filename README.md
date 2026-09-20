@@ -4,7 +4,7 @@ A browser-only playable MVP on Edinburgh Airport's actual OpenStreetMap geometry
 
 Continuing from another account or a fresh task? Start with [CONTINUE_HERE.md](CONTINUE_HERE.md). Planned architecture and feature work lives in [ROADMAP.md](ROADMAP.md); [AGENTS.md](AGENTS.md) preserves project instructions for coding agents.
 
-The [architecture implementation plan](ARCHITECTURE_PLAN.md) sets out phased changes, dependencies, save migrations and completion checks. It is a proposal, not a record of implemented changes.
+The [architecture implementation plan](ARCHITECTURE_PLAN.md) records the completed first foundation package and the remaining phases, dependencies, save migrations and completion checks.
 
 Open **Ground Control.html** directly in a browser. The map, icons, pathfinding and simulation are bundled; the game works without a server or internet connection. The `dist` folder is the equivalent static website.
 
@@ -52,13 +52,15 @@ This is a static, client-only JavaScript application with no runtime backend or 
 | `src/map.js` | Canvas renderer, map camera, aircraft hit testing, pan/zoom and input callbacks. |
 | `src/app.js` | Menus, flight groups, keyboard shortcuts, UI state, simulation loop and coordination. |
 | `src/persistence.js` | Versioned snapshots, validation, save/reload and safe recovery. |
-| `dist/data/egph.json` | Airport geometry and routing network, independent of live aircraft state. |
+| `data/airports/egph/geometry.json` | Authored airport geometry and routing network, copied unchanged to the published `data/egph.json` URL. |
+| `web/` | Authored static HTML and CSS. |
+| `src/domain/contracts.ts` | Initial state/command/data/save contracts; no runtime state migration. |
 | `scripts/import-airport.mjs` | Offline OpenStreetMap ingestion; no map API is required during gameplay. |
 | `scripts/build.mjs` | esbuild bundle plus the standalone offline HTML. |
 
 Flow: mouse/keyboard input -> validated simulation command -> time-step updates -> Canvas/DOM rendering and periodic snapshots. Routing uses A* through ngraph.graph/ngraph.path; icons use Lucide. Tests exercise the simulation without a browser and actual gameplay with Playwright.
 
-This can grow without a rewrite. Before expanding the catalog, move hard-coded initial stands, runway 24/D1 assumptions, schedules and runway-specific UI text into airport/scenario configuration. Multiple active runways will need per-runway occupancy rather than the current single owner. As features accumulate, split the menu/rendering/keyboard code out of `app.js`, format the dense simulation/map code, and add typed state/command contracts. Keep new rules covered by deterministic scenarios. A fixed time-step and seeded traffic generator would support replay; a worker and spatial index would be options if measured traffic load becomes too high. Those are future improvements, not changes made by the persistence update.
+The first architecture package adds readable source, independent build output, archived save regressions and initial typed contracts. Strict type checking currently covers domain contracts, traffic geometry and compile-time tests, not the full engine/UI. Branded identifiers and discriminated commands are boundary vocabulary for incremental adoption; they do not replace runtime JSON validation. Scenario types are not yet wired into the engine. Next comes session/save ownership, then data-driven airports and focused UI modules. Multiple runways and deterministic timing remain future work; no gameplay rules or save schema changed in this package.
 
 ## Data
 
@@ -68,8 +70,10 @@ Airport ingestion is reproducible with `node scripts/import-airport.mjs /path/to
 
 ## Development
 
-Run `npm install`, `npm run build`, then `npm run dev`. The local static preview is on port 4173. Run `npm test` for network, simulation and persistence checks. `node tests/browser.mjs`, `node tests/traffic-browser.mjs` and `node tests/persistence-browser.mjs` exercise browser controls, saves and offline operation using installed Chrome; visual tests capture screenshots in `../work`.
+Use Node 22+ and `npm ci`, then `npm run verify`. Verification cleans/rebuilds `dist/`, checks packaged output and types, runs unit/archived-save tests and all three browser suites (including offline play). Browser verification needs installed Google Chrome by default and manages its own temporary server on an available port. `npm test` runs unit tests alone; `npm run test:browser` runs browser tests against the most recent build. Set `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` to override browser channel, an existing preview URL or the default ignored `test-results/` artifact directory. Tests use isolated browser contexts, never your personal saves.
 
-The simulation is in `src/sim.js`, Canvas map in `src/map.js`, and interface in `src/app.js`. The static HTML and CSS are authored in `dist/`; the build bundles JavaScript and generates the standalone HTML file. Pathfinding uses ngraph.graph and ngraph.path, and interface icons use Lucide. These libraries retain their upstream licenses in `node_modules` and bundled license notices.
+For interactive preview, run `npm run dev` after building, then open `http://localhost:4173`. If that port is occupied, use `npm run dev -- -p 4174` instead. `npm run format:check` checks source formatting. `npm run benchmark` records simulation/draw/save timings separately from correctness checks. Frozen references and measurement caveats are in [tests/baselines/README.md](tests/baselines/README.md).
+
+The simulation is in `src/sim.js`, Canvas map in `src/map.js`, and interface in `src/app.js`. HTML/CSS are authored in `web/` and airport data in `data/airports/egph/geometry.json`. `dist/` is entirely generated and ignored, so cleaning it cannot remove source. The standalone HTML is generated but remains tracked for immediate offline play. Pathfinding uses ngraph.graph and ngraph.path, and interface icons use Lucide. These libraries retain their upstream licenses in `node_modules` and bundled license notices.
 
 WebMCP registration is optional and feature-detected: read the simulation or issue the same clearances exposed by the interface. Unsupported browsers simply run the regular game.
