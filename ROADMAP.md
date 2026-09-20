@@ -2,6 +2,8 @@
 
 Requested architecture follow-up. These are queued, not implemented by creating this list.
 
+Implementation order, module boundaries, save migrations and phase acceptance criteria are detailed in [ARCHITECTURE_PLAN.md](ARCHITECTURE_PLAN.md). Start with its baseline-protection phase; the checklist below is scope, not execution order.
+
 ## Next: Foundation for Expansion
 
 - [ ] Extract airport/scenario configuration: initial stands, active runway, holding points, arrival exits, traffic schedules and runway-specific UI/radio text. Remove Edinburgh/24/D1 assumptions from shared logic.

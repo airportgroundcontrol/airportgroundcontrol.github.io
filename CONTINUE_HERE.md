@@ -63,6 +63,7 @@ The browser tests use Playwright with `channel: 'chrome'` and save screenshots i
 - Persistence: localStorage per airport, versioned/validated snapshots, save on commands, periodic autosave, restore of simulation and view state. No elapsed-time catch-up while closed.
 - Current limits: one airport/active runway; simplified separation and aircraft physics; no stop-bar simulation, multiplayer, account sync or save export/import.
 - Work requested next is recorded in `ROADMAP.md`; those architecture changes are not yet implemented.
+- The phased proposal is in `ARCHITECTURE_PLAN.md`. It defines acceptance gates and save-compatibility work; implementation has not started. Read it before selecting an architecture task.
 
 ## Architecture and Editing Map
 
