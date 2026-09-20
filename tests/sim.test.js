@@ -1,17 +1,181 @@
-import test from 'node:test';
-import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { GroundSim, distance, orderedFlights, requestsAction } from '../src/sim.js';
-const data=JSON.parse(fs.readFileSync(new URL('../dist/data/egph.json',import.meta.url)));
-function setup(){const sim=new GroundSim(data);sim.nextArrival=Infinity;sim.nextDeparture=Infinity;return sim;}
-function until(sim,id,state,max=500){let elapsed=0;while(sim.planes.find(p=>p.id===id).state!==state&&elapsed<max){sim.tick(.1);elapsed+=.1;}assert.equal(sim.planes.find(p=>p.id===id).state,state);}
+import test from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import {
+  GroundSim,
+  distance,
+  orderedFlights,
+  requestsAction,
+} from "../src/sim.js";
+const data = JSON.parse(
+  fs.readFileSync(new URL("../dist/data/egph.json", import.meta.url)),
+);
+function setup() {
+  const sim = new GroundSim(data);
+  sim.nextArrival = Infinity;
+  sim.nextDeparture = Infinity;
+  return sim;
+}
+function until(sim, id, state, max = 500) {
+  let elapsed = 0;
+  while (sim.planes.find((p) => p.id === id).state !== state && elapsed < max) {
+    sim.tick(0.1);
+    elapsed += 0.1;
+  }
+  assert.equal(sim.planes.find((p) => p.id === id).state, state);
+}
 
-test('all 33 playable stands are connected to D1 without using the runway',()=>{const sim=setup();assert.equal(data.stands.length,33);for(const stand of data.stands){const p=sim.path(stand.node,data.departureHold);assert.ok(p.length>1,stand.id);assert.ok(p.every(n=>sim.runwayDistance(n)>=30),stand.id);for(let i=1;i<p.length;i++)assert.ok(sim.graph.getLink(p[i-1].id,p[i].id)||sim.graph.getLink(p[i].id,p[i-1].id));}});
-test('departure cycle follows the stand and taxiway network, stops at D1 and releases runway',()=>{const s=setup(),p=s.planes[0];assert.ok(s.command(p.id,'pushback').ok);until(s,p.id,'ready');assert.equal(p.node,s.stands.get('3').exit);assert.equal(p.stand,null);assert.ok(s.command(p.id,'taxi').ok);until(s,p.id,'holding');assert.equal(p.node,data.departureHold);assert.equal(s.runwayOwner,null);assert.ok(s.command(p.id,'lineup').ok);until(s,p.id,'linedup');assert.ok(s.runwayDistance(p)<1);assert.equal(s.runwayOwner,p.id);assert.ok(s.command(p.id,'takeoff').ok);until(s,p.id,'done');assert.equal(s.runwayOwner,null);assert.equal(s.completed,1);});
-test('arrival cannot share runway; reservation lasts through runway exit',()=>{const s=setup(),p=s.planes[3];assert.ok(s.command(p.id,'land').ok);s.spawnArrival('TEST2');assert.equal(s.command(s.planes.at(-1).id,'land').ok,false);assert.equal(s.runwayOwner,p.id);until(s,p.id,'inbound');assert.ok(s.runwayDistance(p)>85);assert.equal(s.runwayOwner,null);assert.equal(s.command(p.id,'taxi',{stand:'3'}).ok,false);assert.ok(s.command(p.id,'taxi',{stand:'14'}).ok);until(s,p.id,'parked');assert.equal(p.node,s.stands.get('14').node);assert.equal(s.completed,1);});
-test('hold freezes motion, resume continues without teleporting',()=>{const s=setup(),p=s.planes[0];s.command(p.id,'pushback');for(let i=0;i<50;i++)s.tick(.1);s.command(p.id,'hold');const pos={x:p.x,y:p.y};for(let i=0;i<50;i++)s.tick(.1);assert.equal(distance(pos,p),0);s.command(p.id,'hold');s.tick(.1);assert.ok(distance(pos,p)>0&&distance(pos,p)<1);});
-test('taxi preview goes through requested waypoints and invalid clearances preserve state',()=>{const s=setup(),p=s.planes[0];assert.equal(s.command(p.id,'takeoff').ok,false);assert.equal(p.state,'gate');s.command(p.id,'pushback');until(s,p.id,'ready');const point=data.nodes.find(n=>n.ref==='A15');const planned=s.plan(p,data.departureHold,[point.id]);assert.ok(planned.some(n=>n.id===point.id));assert.deepEqual(s.plan(p,data.departureHold,['missing']),[]);});
-test('separation monitor stops an aircraft behind occupied pavement',()=>{const s=setup(),p=s.planes[0];s.planes=s.planes.filter(q=>q.id===p.id);s.command(p.id,'pushback');until(s,p.id,'ready');s.command(p.id,'taxi');const next=p.route[0];const length=distance(p,next);const other={...p,id:999,call:'BLOCKER',state:'ready',x:p.x+(next.x-p.x)/length*35,y:p.y+(next.y-p.y)/length*35,route:[]};s.planes.push(other);s.tick(.1);assert.equal(p.blocked,true);assert.equal(p.speed,0);assert.equal(s.incidents,1);s.tick(.1);assert.equal(s.incidents,1);});
-test('simulation continues beyond 20 minutes and throughout a four-hour session',()=>{const s=new GroundSim(data);for(let i=0;i<57601;i++)s.tick(.25);assert.ok(s.time>14400);assert.ok(s.planes.length<=24);assert.ok(s.logs.length<=40);const active=s.planes.filter(p=>p.state!=='done');assert.equal(new Set(active.map(p=>p.call)).size,active.length);assert.ok(s.command(1,'pushback').ok);s.reset();assert.equal(s.time,0);assert.equal(s.completed,0);assert.equal(s.runwayOwner,null);assert.equal(s.planes.length,4);});
-test('departed aircraft and their conflict records are retired without resetting totals',()=>{const s=setup();s.score=100;s.completed=1;s.planes.push({...s.planes[0],id:99,state:'done',completedAt:0,stand:null});s.conflictPairs.add('1:99');for(let i=0;i<250;i++)s.tick(.25);assert.equal(s.planes.some(p=>p.id===99),false);assert.equal(s.conflictPairs.size,0);assert.equal(s.score,100);assert.equal(s.completed,1);});
-test('pending requests and traffic holds sort ahead of moving aircraft',()=>{const s=setup();s.command(1,'pushback');assert.deepEqual(orderedFlights(s.planes).map(p=>p.id),[2,3,4,1]);s.planes[0].held=true;assert.equal(orderedFlights(s.planes)[0].id,1);assert.ok(requestsAction(s.planes[0]));s.planes[0].held=false;until(s,1,'ready');assert.ok(orderedFlights(s.planes).every(requestsAction));});
+test("all 33 playable stands are connected to D1 without using the runway", () => {
+  const sim = setup();
+  assert.equal(data.stands.length, 33);
+  for (const stand of data.stands) {
+    const p = sim.path(stand.node, data.departureHold);
+    assert.ok(p.length > 1, stand.id);
+    assert.ok(
+      p.every((n) => sim.runwayDistance(n) >= 30),
+      stand.id,
+    );
+    for (let i = 1; i < p.length; i++)
+      assert.ok(
+        sim.graph.getLink(p[i - 1].id, p[i].id) ||
+          sim.graph.getLink(p[i].id, p[i - 1].id),
+      );
+  }
+});
+test("departure cycle follows the stand and taxiway network, stops at D1 and releases runway", () => {
+  const s = setup(),
+    p = s.planes[0];
+  assert.ok(s.command(p.id, "pushback").ok);
+  until(s, p.id, "ready");
+  assert.equal(p.node, s.stands.get("3").exit);
+  assert.equal(p.stand, null);
+  assert.ok(s.command(p.id, "taxi").ok);
+  until(s, p.id, "holding");
+  assert.equal(p.node, data.departureHold);
+  assert.equal(s.runwayOwner, null);
+  assert.ok(s.command(p.id, "lineup").ok);
+  until(s, p.id, "linedup");
+  assert.ok(s.runwayDistance(p) < 1);
+  assert.equal(s.runwayOwner, p.id);
+  assert.ok(s.command(p.id, "takeoff").ok);
+  until(s, p.id, "done");
+  assert.equal(s.runwayOwner, null);
+  assert.equal(s.completed, 1);
+});
+test("arrival cannot share runway; reservation lasts through runway exit", () => {
+  const s = setup(),
+    p = s.planes[3];
+  assert.ok(s.command(p.id, "land").ok);
+  s.spawnArrival("TEST2");
+  assert.equal(s.command(s.planes.at(-1).id, "land").ok, false);
+  assert.equal(s.runwayOwner, p.id);
+  until(s, p.id, "inbound");
+  assert.ok(s.runwayDistance(p) > 85);
+  assert.equal(s.runwayOwner, null);
+  assert.equal(s.command(p.id, "taxi", { stand: "3" }).ok, false);
+  assert.ok(s.command(p.id, "taxi", { stand: "14" }).ok);
+  until(s, p.id, "parked");
+  assert.equal(p.node, s.stands.get("14").node);
+  assert.equal(s.completed, 1);
+});
+test("hold freezes motion, resume continues without teleporting", () => {
+  const s = setup(),
+    p = s.planes[0];
+  s.command(p.id, "pushback");
+  for (let i = 0; i < 50; i++) s.tick(0.1);
+  s.command(p.id, "hold");
+  const pos = { x: p.x, y: p.y };
+  for (let i = 0; i < 50; i++) s.tick(0.1);
+  assert.equal(distance(pos, p), 0);
+  s.command(p.id, "hold");
+  s.tick(0.1);
+  assert.ok(distance(pos, p) > 0 && distance(pos, p) < 1);
+});
+test("taxi preview goes through requested waypoints and invalid clearances preserve state", () => {
+  const s = setup(),
+    p = s.planes[0];
+  assert.equal(s.command(p.id, "takeoff").ok, false);
+  assert.equal(p.state, "gate");
+  s.command(p.id, "pushback");
+  until(s, p.id, "ready");
+  const point = data.nodes.find((n) => n.ref === "A15");
+  const planned = s.plan(p, data.departureHold, [point.id]);
+  assert.ok(planned.some((n) => n.id === point.id));
+  assert.deepEqual(s.plan(p, data.departureHold, ["missing"]), []);
+});
+test("separation monitor stops an aircraft behind occupied pavement", () => {
+  const s = setup(),
+    p = s.planes[0];
+  s.planes = s.planes.filter((q) => q.id === p.id);
+  s.command(p.id, "pushback");
+  until(s, p.id, "ready");
+  s.command(p.id, "taxi");
+  const next = p.route[0];
+  const length = distance(p, next);
+  const other = {
+    ...p,
+    id: 999,
+    call: "BLOCKER",
+    state: "ready",
+    x: p.x + ((next.x - p.x) / length) * 35,
+    y: p.y + ((next.y - p.y) / length) * 35,
+    route: [],
+  };
+  s.planes.push(other);
+  s.tick(0.1);
+  assert.equal(p.blocked, true);
+  assert.equal(p.speed, 0);
+  assert.equal(s.incidents, 1);
+  s.tick(0.1);
+  assert.equal(s.incidents, 1);
+});
+test("simulation continues beyond 20 minutes and throughout a four-hour session", () => {
+  const s = new GroundSim(data);
+  for (let i = 0; i < 57601; i++) s.tick(0.25);
+  assert.ok(s.time > 14400);
+  assert.ok(s.planes.length <= 24);
+  assert.ok(s.logs.length <= 40);
+  const active = s.planes.filter((p) => p.state !== "done");
+  assert.equal(new Set(active.map((p) => p.call)).size, active.length);
+  assert.ok(s.command(1, "pushback").ok);
+  s.reset();
+  assert.equal(s.time, 0);
+  assert.equal(s.completed, 0);
+  assert.equal(s.runwayOwner, null);
+  assert.equal(s.planes.length, 4);
+});
+test("departed aircraft and their conflict records are retired without resetting totals", () => {
+  const s = setup();
+  s.score = 100;
+  s.completed = 1;
+  s.planes.push({
+    ...s.planes[0],
+    id: 99,
+    state: "done",
+    completedAt: 0,
+    stand: null,
+  });
+  s.conflictPairs.add("1:99");
+  for (let i = 0; i < 250; i++) s.tick(0.25);
+  assert.equal(
+    s.planes.some((p) => p.id === 99),
+    false,
+  );
+  assert.equal(s.conflictPairs.size, 0);
+  assert.equal(s.score, 100);
+  assert.equal(s.completed, 1);
+});
+test("pending requests and traffic holds sort ahead of moving aircraft", () => {
+  const s = setup();
+  s.command(1, "pushback");
+  assert.deepEqual(
+    orderedFlights(s.planes).map((p) => p.id),
+    [2, 3, 4, 1],
+  );
+  s.planes[0].held = true;
+  assert.equal(orderedFlights(s.planes)[0].id, 1);
+  assert.ok(requestsAction(s.planes[0]));
+  s.planes[0].held = false;
+  until(s, 1, "ready");
+  assert.ok(orderedFlights(s.planes).every(requestsAction));
+});
