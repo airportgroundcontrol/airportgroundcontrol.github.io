@@ -1,13 +1,18 @@
 {
   "id": "standard",
   "version": 1,
-  "activeRunwayEnd": "24",
-  "initialDepartures": [
-    { "stand": "3", "call": "BAW1439" },
-    { "stand": "8", "call": "EZY326" },
-    { "stand": "20", "call": "RYR6624" }
+  "compatibleConfigurationRevisions": ["a87c13b0", "9d642951", "24b89f02", "23583061"],
+  "runwayUses": [
+    {
+      "runwayId": "06-24",
+      "endId": "24",
+      "arrivals": true,
+      "departures": true
+    }
   ],
-  "initialArrivals": ["KLM927"],
+  "initialDepartures": [],
+  "initialArrivals": [],
+  "initialTraffic": { "departures": [2, 4], "arrivals": [1, 2] },
   "departureStands": [
     "1",
     "2",
@@ -34,20 +39,21 @@
     "24"
   ],
   "traffic": {
+    "intervalJitter": 0.25,
+    "approachJitter": 0.15,
     "arrivalInterval": 210,
+    "approachSeconds": 360,
+    "approachSeparationSeconds": 120,
+    "decisionSeconds": 8,
     "departureInterval": 260,
     "maxApproaches": 2,
     "maxDepartures": 6,
     "maxActive": 24,
-    "arrivalSpacing": 430,
-    "queueSpacing": 220,
     "departurePrefixes": ["BAW", "EZY", "RYR", "LOG", "SAS"],
-    "arrivalPrefixes": ["AFR", "EZY", "BAW", "KLM"],
-    "departureTypes": ["A320", "A320", "B738"],
-    "arrivalType": "A320"
+    "arrivalPrefixes": ["AFR", "EZY", "BAW", "KLM"]
   },
-  "turnaroundSeconds": 100,
-  "goAroundSeconds": 210,
+  "turnaroundSeconds": 2700,
+  "turnaroundJitter": 0.15,
   "cleanupSeconds": 60,
   "scoring": { "movement": 100, "goAround": 25, "conflict": 20 },
   "clockStartSeconds": 28800,

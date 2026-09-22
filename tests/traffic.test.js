@@ -4,11 +4,16 @@ import fs from "node:fs";
 import {
   GroundSim,
   distance,
+  flightStatus,
   requestsAction,
-  groupedFlights,
 } from "../src/sim.js";
 import { routeConflict, separation } from "../src/traffic.js";
-import { defaultAirport as data } from "../src/airports/catalog.js";
+import {
+  aircraftType,
+  queueSeparation,
+  crossingSeparation,
+} from "../src/aircraft/catalog.js";
+import { defaultAirport as data } from "./fixtures/standard-airport.js";
 const setup = () => {
   const s = new GroundSim(data);
   s.nextArrival = s.nextDeparture = Infinity;
@@ -26,6 +31,7 @@ const ready = (s) => {
 const taxi = (id, x, y, end) => ({
   id,
   call: "TEST" + id,
+  type: "A320",
   state: "taxi",
   direction: "departure",
   x,
@@ -48,7 +54,7 @@ test("mapped holding clearance stops at A15 and needs a new clearance; runway en
   assert.ok(s.command(1, "taxi", { holdingPoint: hold.id }).ok);
   advance(s, () => p.state === "atpoint");
   assert.equal(p.node, hold.id);
-  assert.equal(distance(p, hold), 0);
+  assert.ok(distance(p, hold) >= aircraftType(p.type).length / 2 + 2);
   assert.ok(requestsAction(p));
   assert.equal(s.command(1, "lineup").ok, false);
   assert.equal(s.command(1, "continue").ok, false);
@@ -95,7 +101,7 @@ test("arrival can taxi to an intermediate hold before being assigned a stand", (
   assert.ok(s.command(p.id, "taxi", { holdingPoint: hold.id }).ok);
   advance(s, () => p.state === "atpoint");
   assert.equal(s.completed, 0);
-  assert.ok(s.command(p.id, "taxi", { stand: "14" }).ok);
+  assert.ok(s.command(p.id, "taxi", { stand: "1" }).ok);
   advance(s, () => p.state === "parked");
   assert.equal(s.completed, 1);
 });
@@ -106,6 +112,7 @@ test("mid-edge revised route starts at current position and continues to the nex
   s.command(1, "taxi");
   for (let i = 0; i < 20; i++) s.tick(0.1);
   s.command(1, "hold");
+  for (let i = 0; i < 100 && p.speed > 0; i++) s.tick(0.1);
   const next = p.route[0];
   const plan = s.plan(p, data.departureHold);
   assert.equal(distance(p, plan[0]), 0);
@@ -122,14 +129,14 @@ test("follow queues behind the specified aircraft without incidents and resumes 
   q.held = true;
   assert.ok(s.command(p.id, "follow", { targetId: q.id }).ok);
   advance(s, () => p.trafficWaiting && p.speed < 0.05);
-  assert.ok(distance(p, q) >= separation - 0.1);
+  assert.ok(distance(p, q) >= queueSeparation(p, q) - 0.1);
   assert.equal(requestsAction(p), false);
   assert.equal(s.incidents, 0);
   const before = p.x;
   q.held = false;
   for (let i = 0; i < 500; i++) {
     s.tick(0.1);
-    assert.ok(distance(p, q) >= separation - 0.1);
+    assert.ok(distance(p, q) >= queueSeparation(p, q) - 0.1);
   }
   assert.ok(p.x > before + 100);
   assert.equal(s.incidents, 0);
@@ -148,10 +155,10 @@ test("give way stops before a crossing then releases only after the target clear
     "Circular orders rejected",
   );
   advance(s, () => p.trafficWaiting && p.speed < 0.05);
-  assert.ok(p.x <= 240.1);
+  assert.ok(p.x <= 300 - crossingSeparation(p, q) + 0.1);
   q.held = false;
   advance(s, () => !p.trafficOrder);
-  assert.ok(q.y >= 1560);
+  assert.ok(q.y >= 1500 + crossingSeparation(q, p));
   advance(s, () => p.x > 350);
   assert.equal(s.incidents, 0);
 });
@@ -199,7 +206,7 @@ test("give-way order releases if the target is rerouted away, but not while it o
   assert.ok(s.command(101, "giveway", { targetId: 102 }).ok);
   for (let i = 0; i < 300; i++) s.tick(0.1);
   assert.ok(p.trafficOrder);
-  assert.ok(p.x <= 240.1);
+  assert.ok(p.x <= 300 - crossingSeparation(p, q) + 0.1);
 });
 
 test("crossing traffic on the right is given priority without a manual command", () => {
@@ -220,21 +227,20 @@ test("crossing traffic on the right is given priority without a manual command",
   assert.equal(s.incidents, 0);
 });
 
-test("status groups aggregate requests first and distinguish automatic yielding from requests", () => {
+test("request detection distinguishes automatic yielding from controller requests", () => {
   const s = setup();
   s.command(1, "pushback");
-  const groups = groupedFlights(s.planes);
-  assert.equal(groups[0].label, "Request pushback");
-  assert.equal(groups[0].planes.length, 2);
-  assert.equal(groups.at(-1).label, "Pushing back");
+  assert.equal(requestsAction(s.planes[1]), true);
+  assert.equal(flightStatus(s.planes[1]), "Request pushback");
+  assert.equal(flightStatus(s.planes[0]), "Pushing back");
   const p = s.planes[0];
   p.state = "taxi";
   p.trafficWaiting = "giveway";
   assert.equal(requestsAction(p), false);
-  assert.equal(groupedFlights([p])[0].label, "Giving way");
+  assert.equal(flightStatus(p), "Giving way");
   p.holdReached = true;
   p.held = true;
-  assert.equal(groupedFlights([p])[0].label, "Request onward clearance");
+  assert.equal(flightStatus(p), "Request onward clearance");
 });
 
 test("shared-route geometry distinguishes crossing, following and unrelated routes", () => {

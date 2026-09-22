@@ -21,15 +21,14 @@ const operations = JSON.parse(
 const scenario = JSON.parse(
   fs.readFileSync(path.resolve(directory, metadata.scenario), "utf8"),
 );
-const runway = operations.runways.find((r) =>
-  r.configurations.some((c) => c.endId === scenario.activeRunwayEnd),
-);
+const primaryUse = scenario.runwayUses?.[0];
+const runway = operations.runways.find((r) => r.id === primaryUse?.runwayId);
 if (!runway)
   throw new Error("No curated runway configuration for this scenario");
-const active = runway.ends.find((e) => e.id === scenario.activeRunwayEnd);
-const opposite = runway.ends.find((e) => e.id !== scenario.activeRunwayEnd);
+const active = runway.ends.find((e) => e.id === primaryUse.endId);
+const opposite = runway.ends.find((e) => e.id !== primaryUse.endId);
 const configuration = runway.configurations.find(
-  (c) => c.endId === scenario.activeRunwayEnd,
+  (c) => c.endId === primaryUse.endId,
 );
 const raw = new XMLParser({
   ignoreAttributes: false,
@@ -83,20 +82,39 @@ const features = ways
 const routeWays = ways.filter((w) =>
   ["taxiway", "taxilane", "parking_position"].includes(w.tags.aeroway),
 );
+const taxiNetworkNodes = new Set(
+  routeWays
+    .filter((w) => w.tags.aeroway !== "parking_position")
+    .flatMap((w) => w.nodes),
+);
 const routeNodes = new Map(),
-  edges = [];
+  edgeByPair = new Map(),
+  edgePriority = { parking_position: 1, taxilane: 2, taxiway: 3 };
 for (const w of routeWays) {
   if (w.nodes.some((id) => !nodes.has(id)))
     throw new Error("Incomplete OSM route way: " + w.id);
   for (const id of w.nodes) routeNodes.set(id, nodes.get(id));
-  for (let i = 1; i < w.nodes.length; i++)
-    edges.push({
+  for (let i = 1; i < w.nodes.length; i++) {
+    const edge = {
       a: w.nodes[i - 1],
       b: w.nodes[i],
       ref: w.tags.ref || "",
       type: w.tags.aeroway,
-    });
+      sourceWay: w.id,
+    };
+    const key = [edge.a, edge.b].sort().join(":");
+    const previous = edgeByPair.get(key);
+    if (
+      !previous ||
+      edgePriority[edge.type] > edgePriority[previous.type] ||
+      (edgePriority[edge.type] === edgePriority[previous.type] &&
+        edge.ref &&
+        !previous.ref)
+    )
+      edgeByPair.set(key, edge);
+  }
 }
+const edges = [...edgeByPair.values()].map(({ sourceWay, ...edge }) => edge);
 const adjacency = new Map([...routeNodes.keys()].map((id) => [id, []]));
 for (const e of edges) {
   adjacency.get(e.a).push(e.b);
@@ -116,25 +134,44 @@ const stands = routeWays
   .filter(
     (w) =>
       w.tags.aeroway === "parking_position" &&
-      connected.has(w.nodes[0]) &&
-      w.nodes.length > 1,
+      w.nodes.length > 1 &&
+      taxiNetworkNodes.has(w.nodes[0]) !== taxiNetworkNodes.has(w.nodes.at(-1)),
   )
-  .map((w) => ({
-    id: w.tags.ref || w.id,
-    node: w.nodes.at(-1),
-    exit: w.nodes[0],
-    path: w.nodes,
-    heading: Math.atan2(
-      nodes.get(w.nodes.at(-1)).y - nodes.get(w.nodes.at(-2)).y,
-      nodes.get(w.nodes.at(-1)).x - nodes.get(w.nodes.at(-2)).x,
-    ),
-  }))
+  .map((w) => {
+    const path = taxiNetworkNodes.has(w.nodes[0])
+      ? w.nodes
+      : [...w.nodes].reverse();
+    return {
+      id: w.tags.ref || w.id,
+      node: path.at(-1),
+      exit: path[0],
+      path,
+      heading: Math.atan2(
+        nodes.get(path.at(-1)).y - nodes.get(path.at(-2)).y,
+        nodes.get(path.at(-1)).x - nodes.get(path.at(-2)).x,
+      ),
+    };
+  })
+  .filter((s) => connected.has(s.exit))
   .filter((s) => metadata.standIds.includes(s.id))
   .sort(
     (a, b) => metadata.standIds.indexOf(a.id) - metadata.standIds.indexOf(b.id),
   );
-if (stands.length !== metadata.standIds.length)
-  throw new Error("Not all curated stands were found exactly once");
+if (stands.length !== metadata.standIds.length) {
+  const counts = Object.fromEntries(
+    metadata.standIds.map((id) => [
+      id,
+      stands.filter((stand) => stand.id === id).length,
+    ]),
+  );
+  throw new Error(
+    "Curated stands missing or duplicated: " +
+      Object.entries(counts)
+        .filter(([, count]) => count !== 1)
+        .map(([id, count]) => `${id} (${count})`)
+        .join(", "),
+  );
+}
 const geometry = {
   id: metadata.id,
   iata: metadata.iata,

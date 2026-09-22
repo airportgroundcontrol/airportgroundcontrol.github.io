@@ -6,6 +6,10 @@ import { execFileSync } from "node:child_process";
 import { GroundSim } from "../src/sim.js";
 import { GameStorage, captureSimulation } from "../src/persistence.js";
 
+throw new Error(
+  "V1 capture is retired. Archived bytes are rejection fixtures; this engine writes format 2 only.",
+);
+
 if (!process.argv.includes("--capture"))
   throw new Error("Pass --capture to intentionally replace the baseline.");
 const directory = new URL("../tests/fixtures/v1/", import.meta.url);

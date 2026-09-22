@@ -1,5 +1,6 @@
 import { baseURL, browserChannel, artifact } from "./browser-support.mjs";
 import { chromium } from "playwright";
+import { useScriptedTraffic } from "./scripted-browser.mjs";
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
@@ -7,6 +8,16 @@ const browser = await chromium.launch({
   channel: browserChannel,
   headless: true,
 });
+const clickAircraft = async (page, id) => {
+  const point = await page.evaluate(
+    (id) =>
+      groundControl.map.aircraftScreen(
+        groundControl.sim.planes.find((plane) => plane.id === id),
+      ),
+    id,
+  );
+  await page.mouse.click(point.x, point.y);
+};
 try {
   const context = await browser.newContext({
     viewport: { width: 1440, height: 960 },
@@ -15,6 +26,7 @@ try {
     errors = [],
     key = "ground-control:save:EGPH";
   page.on("pageerror", (e) => errors.push(e.message));
+  await useScriptedTraffic(page.context());
   await page.goto(baseURL);
   await page.waitForFunction(() => window.groundControl);
   await page.evaluate(() => {
@@ -22,7 +34,7 @@ try {
     groundControl.setPaused(true);
     s.nextArrival = s.nextDeparture = Infinity;
     s.command(1, "pushback");
-    for (let i = 0; i < 500 && s.planes[0].state !== "ready"; i++) s.tick(0.1);
+    for (let i = 0; i < 2000 && s.planes[0].state !== "ready"; i++) s.tick(0.1);
     s.command(1, "taxi");
     s.command(1, "holdshort", { holdPoint: s.holdOptions(s.planes[0])[0].id });
     s.command(4, "land");
@@ -32,12 +44,10 @@ try {
     s.incidents = 2;
     s.conflictPairs.add("1:2");
   });
-  await page.getByRole("button", { name: "Select BAW1439" }).click();
+  await clickAircraft(page, 1);
   await page.keyboard.press("Escape");
-  await page.getByRole("button", { name: "8x", exact: true }).click();
-  await page.getByRole("button", { name: "Departures", exact: true }).click();
+  await page.getByRole("button", { name: "1x", exact: true }).click();
   await page.getByRole("button", { name: "Toggle map labels" }).click();
-  await page.getByRole("button", { name: "Toggle flight panel" }).click();
   await page.evaluate(() => {
     groundControl.map.camera = { x: 125, y: -240, zoom: 0.6 };
   });
@@ -51,7 +61,6 @@ try {
         incidents: s.incidents,
         runway: s.runwayOwner,
         planes: s.planes,
-        logs: s.logs,
         conflicts: [...s.conflictPairs],
         nextId: s.nextId,
         nextArrival: s.nextArrival,
@@ -69,14 +78,11 @@ try {
     "PAUSED",
   );
   assert.equal(
-    await page.locator('[data-speed="8"]').getAttribute("class"),
+    await page.locator('[data-speed="1"]').getAttribute("class"),
     "active",
   );
-  assert.equal(
-    await page.locator('[data-filter="departure"]').getAttribute("class"),
-    "active",
-  );
-  assert.equal(await page.locator("#traffic-panel").isVisible(), false);
+  assert.equal(await page.locator('[data-speed="8"]').count(), 0);
+  assert.equal(await page.locator("#traffic-panel").count(), 0);
   assert.equal(
     await page.locator("#labels").getAttribute("aria-pressed"),
     "false",
@@ -104,6 +110,8 @@ try {
   // A draft taxi route survives reload, including its pending waypoints.
   await reopened.evaluate(() => {
     groundControl.sim.command(1, "hold");
+    for (let i = 0; i < 200 && groundControl.sim.planes[0].speed > 0; i++)
+      groundControl.sim.tick(0.05);
     groundControl.select(1);
     groundControl.preview();
   });
@@ -137,9 +145,11 @@ try {
   await reopened.evaluate(() => groundControl.setPaused(true));
 
   await reopened
-    .getByRole("button", { name: "Restart simulation", exact: true })
+    .getByRole("button", { name: "Delete saved game", exact: true })
     .click();
-  await reopened.getByRole("button", { name: "Restart", exact: true }).click();
+  await reopened
+    .getByRole("button", { name: "Delete and restart", exact: true })
+    .click();
   await reopened.evaluate(() => groundControl.setPaused(true));
   await reopened.reload();
   await reopened.waitForFunction(() => window.groundControl);
@@ -160,18 +170,12 @@ try {
   const broken = await brokenContext.newPage();
   await broken.goto(baseURL);
   await broken.waitForFunction(() => window.groundControl);
-  assert.equal(
-    await broken.evaluate(
-      (key) => localStorage.getItem(key + ":recovery"),
-      key,
-    ),
-    "{invalid",
+  assert.equal(await broken.locator("#restart-dialog").isVisible(), true);
+  assert.match(
+    await broken.locator("#reset-message").textContent(),
+    /incompatible/,
   );
-  assert.ok(
-    (await broken.locator("#toast").textContent()).includes(
-      "Previous save preserved",
-    ),
-  );
+  assert.equal(await broken.locator("#cancel-restart").isVisible(), false);
 
   await broken.evaluate(() => {
     groundControl.session.dispatch(1, "pushback");
@@ -181,19 +185,17 @@ try {
     await broken.evaluate((key) => localStorage.getItem(key), key),
     "{invalid",
   );
-  await broken
-    .getByRole("button", { name: "Restart simulation", exact: true })
-    .click();
   await broken.locator("#confirm-restart").click();
   assert.equal(
     await broken.evaluate(
       (key) => JSON.parse(localStorage.getItem(key)).version,
       key,
     ),
-    1,
+    2,
   );
 
   const blockedContext = await browser.newContext();
+  await useScriptedTraffic(blockedContext);
   await blockedContext.addInitScript(() => {
     Storage.prototype.setItem = () => {
       throw new Error("QuotaExceededError");
@@ -207,7 +209,7 @@ try {
       "Saving unavailable",
     ),
   );
-  await blocked.getByRole("button", { name: "Select BAW1439" }).click();
+  await clickAircraft(blocked, 1);
   await blocked.keyboard.press("p");
   assert.equal(
     await blocked.evaluate(() => groundControl.sim.planes[0].state),

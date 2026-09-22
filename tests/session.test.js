@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { GameSession } from "../src/session/game-session.js";
-import { defaultAirport as data } from "../src/airports/catalog.js";
+import { defaultAirport as data } from "./fixtures/standard-airport.js";
 const memory = () => {
   const entries = new Map();
   return {
@@ -12,7 +12,7 @@ const memory = () => {
   };
 };
 
-test("session saves successful commands after view cleanup and exposes radio events", () => {
+test("session saves successful commands after view cleanup", () => {
   const store = memory();
   let planning = true;
   const session = new GameSession(data, {
@@ -25,7 +25,7 @@ test("session saves successful commands after view cleanup and exposes radio eve
   session.activate();
   const outcome = session.dispatch(1, "pushback");
   assert.ok(outcome.ok);
-  assert.equal(outcome.events.length, 1);
+  assert.equal("events" in outcome, false);
   const saved = JSON.parse(store.getItem(session.storage.key));
   assert.equal(saved.simulation.planes[0].state, "pushback");
   assert.equal(saved.ui.planning, false);
@@ -40,21 +40,25 @@ test("session owns restoration, pacing, autosave, restart and idempotent disposa
     storage: () => store,
     readView: () => ({ paused: session.paused, speed: session.speed }),
   });
+  assert.equal(session.speed, 1);
   session.activate();
   session.speed = 8;
+  assert.equal(session.speed, 4);
+  session.speed = 4;
   session.advance(0.1);
-  assert.ok(Math.abs(session.sim.time - 0.8) < 1e-9);
+  assert.ok(Math.abs(session.sim.time - 0.4) < 1e-9);
   session.paused = true;
   session.advance(0.1);
-  assert.ok(Math.abs(session.sim.time - 0.8) < 1e-9);
+  assert.ok(Math.abs(session.sim.time - 0.4) < 1e-9);
   session.autosave(100);
   session.autosave(1100);
   const resumed = new GameSession(data, { storage: () => store });
   assert.equal(resumed.restored.status, "restored");
   assert.equal(resumed.paused, true);
-  assert.equal(resumed.speed, 8);
+  assert.equal(resumed.speed, 4);
   assert.equal(resumed.sim.time, session.sim.time);
   session.restart();
+  assert.equal(session.speed, 1);
   assert.equal(session.sim.time, 0);
   session.dispose();
   const before = store.getItem(session.storage.key);

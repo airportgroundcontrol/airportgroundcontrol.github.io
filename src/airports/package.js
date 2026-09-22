@@ -1,5 +1,6 @@
 import { GroundSim } from "../sim.js";
-import { routeConflict } from "../traffic.js";
+import { validateFleet } from "../aircraft/compatibility.js";
+import { aircraftCatalog } from "../aircraft/catalog.js";
 
 const requireValue = (ok, message) => {
   if (!ok) throw new Error("Invalid airport package: " + message);
@@ -31,7 +32,7 @@ export function createAirportPackage({
   geometry,
   operations,
   scenario,
-  compatibility = null,
+  fleet = null,
 }) {
   requireValue(
     geometry && operations && scenario,
@@ -91,6 +92,47 @@ export function createAirportPackage({
     ids.length >= 2 &&
     ids.every((id) => nodes.has(id)) &&
     ids.slice(1).every((id, i) => adjacency.get(ids[i]).has(id));
+  if (operations.curveCorridor !== undefined)
+    requireValue(
+      finite(operations.curveCorridor) &&
+        operations.curveCorridor > 0 &&
+        operations.curveCorridor <= 5,
+      "curve corridor",
+    );
+  for (const [id, options] of Object.entries(operations.pushbacks || {})) {
+    requireValue(stands.has(id) && Array.isArray(options), "pushback stand");
+    unique(
+      options.map((o) => o.id),
+      "pushback choices",
+    );
+    for (const option of options) {
+      requireValue(
+        option.id !== "standard" &&
+          text(option.label) &&
+          ["tug", "self"].includes(option.mode) &&
+          connectedPath(option.path) &&
+          option.path[0] === stands.get(id).node &&
+          (option.mode !== "self" ||
+            (Array.isArray(option.types) && option.types.length > 0)),
+        "pushback option",
+      );
+      if (option.types)
+        requireValue(
+          Array.isArray(option.types) &&
+            option.types.every((type) => Object.hasOwn(aircraftCatalog, type)),
+          "pushback aircraft types",
+        );
+      if (option.mode === "self") {
+        const a = nodes.get(option.path[0]),
+          b = nodes.get(option.path[1]);
+        requireValue(
+          Math.cos(Math.atan2(b.y - a.y, b.x - a.x) - stands.get(id).heading) >
+            0.5,
+          "self-maneuver must leave forwards",
+        );
+      }
+    }
+  }
   for (const s of stands.values())
     requireValue(
       connectedPath(s.path) &&
@@ -126,68 +168,134 @@ export function createAirportPackage({
     "operations metadata",
   );
   requireValue(
-    Array.isArray(operations.runways) && operations.runways.length === 1,
-    "this engine supports one physical runway",
-  );
-  const runway = operations.runways[0];
-  requireValue(token(runway.id) && text(runway.label), "runway identity");
-  requireValue(
-    Array.isArray(runway.ends) && runway.ends.length === 2,
-    "two runway ends required",
+    Array.isArray(operations.runways) && operations.runways.length > 0,
+    "at least one physical runway required",
   );
   unique(
-    runway.ends.map((e) => e.id),
-    "runway ends",
-  );
-  for (const end of runway.ends)
-    requireValue(point(end.position) && token(end.label), "runway threshold");
-  requireValue(
-    finite(runway.protectedHalfWidth) &&
-      runway.protectedHalfWidth > 0 &&
-      finite(runway.releaseDistance) &&
-      runway.releaseDistance > runway.protectedHalfWidth,
-    "runway protection distances",
-  );
-  requireValue(Array.isArray(runway.configurations), "runway configurations");
-  unique(
-    runway.configurations.map((c) => c.endId),
-    "runway configurations",
-  );
-  const active = runway.ends.find((e) => e.id === scenario.activeRunwayEnd);
-  const opposite = runway.ends.find((e) => e.id !== scenario.activeRunwayEnd);
-  const configuration = runway.configurations.find(
-    (c) => c.endId === scenario.activeRunwayEnd,
-  );
-  requireValue(
-    active && opposite && configuration,
-    "active runway end is not configured",
-  );
-  requireValue(
-    Math.hypot(
-      active.position.x - opposite.position.x,
-      active.position.y - opposite.position.y,
-    ) > 100,
-    "runway length",
+    operations.runways.map((r) => r.id),
+    "runways",
   );
   unique(operations.holdingPoints, "holding points");
+  const runwayConfigurations = [];
+  for (const runway of operations.runways) {
+    requireValue(token(runway.id) && text(runway.label), "runway identity");
+    requireValue(
+      Array.isArray(runway.ends) && runway.ends.length === 2,
+      "two runway ends required",
+    );
+    unique(
+      runway.ends.map((e) => e.id),
+      "runway ends for " + runway.id,
+    );
+    for (const end of runway.ends)
+      requireValue(point(end.position) && token(end.label), "runway threshold");
+    requireValue(
+      Math.hypot(
+        runway.ends[0].position.x - runway.ends[1].position.x,
+        runway.ends[0].position.y - runway.ends[1].position.y,
+      ) > 100,
+      "runway length",
+    );
+    requireValue(
+      finite(runway.protectedHalfWidth) &&
+        runway.protectedHalfWidth > 0 &&
+        finite(runway.releaseDistance) &&
+        runway.releaseDistance > runway.protectedHalfWidth,
+      "runway protection distances",
+    );
+    requireValue(Array.isArray(runway.configurations), "runway configurations");
+    unique(
+      runway.configurations.map((c) => c.endId),
+      "runway configurations for " + runway.id,
+    );
+    for (const c of runway.configurations) {
+      requireValue(
+        runway.ends.some((e) => e.id === c.endId),
+        "runway configuration end",
+      );
+      if (c.departureHold !== undefined || c.departureEntry !== undefined)
+        requireValue(
+          operations.holdingPoints.includes(c.departureHold) &&
+            nodes.has(c.departureEntry),
+          "departure runway connections",
+        );
+      if (c.arrivalExit !== undefined || c.vacatePath !== undefined)
+        requireValue(
+          nodes.has(c.arrivalExit) &&
+            connectedPath(c.vacatePath) &&
+            c.vacatePath[0] === c.arrivalExit,
+          "arrival vacate path",
+        );
+      if (c.arrivalExits) {
+        requireValue(
+          Array.isArray(c.arrivalExits) && c.arrivalExits.length > 0,
+          "arrival exits",
+        );
+        unique(
+          c.arrivalExits.map((e) => e.id),
+          "arrival exit IDs for " + runway.id + ":" + c.endId,
+        );
+        for (const exit of c.arrivalExits)
+          requireValue(
+            connectedPath(exit.path) &&
+              exit.path[0] === exit.node &&
+              finite(exit.speed) &&
+              exit.speed > 0 &&
+              exit.speed <= 15,
+            "arrival exit option",
+          );
+      }
+      const roles =
+        c.roles ||
+        [
+          c.arrivalExit !== undefined ? "arrival" : null,
+          c.departureHold !== undefined ? "departure" : null,
+        ].filter(Boolean);
+      requireValue(
+        Array.isArray(roles) &&
+          roles.length > 0 &&
+          roles.every((role) => ["arrival", "departure"].includes(role)) &&
+          new Set(roles).size === roles.length,
+        "runway roles",
+      );
+      if (roles.includes("arrival"))
+        requireValue(
+          nodes.has(c.arrivalExit) && connectedPath(c.vacatePath),
+          "arrival-capable runway end is missing an exit",
+        );
+      if (roles.includes("departure"))
+        requireValue(
+          operations.holdingPoints.includes(c.departureHold) &&
+            nodes.has(c.departureEntry),
+          "departure-capable runway end is missing an entry",
+        );
+      const active = runway.ends.find((end) => end.id === c.endId),
+        opposite = runway.ends.find((end) => end.id !== c.endId);
+      runwayConfigurations.push({
+        key: runway.id + ":" + active.id,
+        runwayId: runway.id,
+        endId: active.id,
+        label: active.label,
+        oppositeLabel: opposite.label,
+        capabilities: roles,
+        physical: runway,
+        configuration: c,
+        start: active.position,
+        end: opposite.position,
+        departureHold: c.departureHold,
+        departureEntry: c.departureEntry,
+        departureHoldLabel: c.departureHold
+          ? nodes.get(c.departureHold).ref
+          : undefined,
+        arrivalExit: c.arrivalExit,
+      });
+    }
+  }
   for (const id of operations.holdingPoints)
     requireValue(
       nodes.get(id)?.hold && nodes.get(id).ref,
       "holding point " + id,
     );
-  for (const c of runway.configurations) {
-    requireValue(
-      runway.ends.some((e) => e.id === c.endId) &&
-        operations.holdingPoints.includes(c.departureHold) &&
-        nodes.has(c.departureEntry) &&
-        nodes.has(c.arrivalExit),
-      "runway connections",
-    );
-    requireValue(
-      connectedPath(c.vacatePath) && c.vacatePath[0] === c.arrivalExit,
-      "arrival vacate path",
-    );
-  }
   const bounds = operations.map?.bounds;
   requireValue(
     bounds &&
@@ -214,6 +322,87 @@ export function createAirportPackage({
       scenario.version > 0,
     "scenario identity",
   );
+  requireValue(
+    Array.isArray(scenario.runwayUses) && scenario.runwayUses.length > 0,
+    "active runway uses",
+  );
+  unique(
+    scenario.runwayUses.map((use) => use.runwayId + ":" + use.endId),
+    "active runway uses",
+  );
+  const resolveRunwayUses = (uses, label = "active runway uses") => {
+    requireValue(Array.isArray(uses) && uses.length > 0, label);
+    unique(
+      uses.map((use) => use.runwayId + ":" + use.endId),
+      label,
+    );
+    requireValue(
+      new Set(uses.map((use) => use.runwayId)).size === uses.length,
+      "opposite runway ends cannot be active together",
+    );
+    const resolved = uses.map((use) => {
+      const base = runwayConfigurations.find(
+        (runway) =>
+          runway.runwayId === use.runwayId && runway.endId === use.endId,
+      );
+      requireValue(
+        base &&
+          typeof use.arrivals === "boolean" &&
+          typeof use.departures === "boolean" &&
+          (use.arrivals || use.departures) &&
+          (!use.arrivals || base.capabilities.includes("arrival")) &&
+          (!use.departures || base.capabilities.includes("departure")) &&
+          (use.weight === undefined || (finite(use.weight) && use.weight > 0)),
+        label,
+      );
+      return {
+        ...base,
+        arrivals: use.arrivals,
+        departures: use.departures,
+        weight: use.weight || 1,
+      };
+    });
+    requireValue(
+      resolved.some((runway) => runway.arrivals) &&
+        resolved.some((runway) => runway.departures),
+      label + " need arrival and departure capacity",
+    );
+    return resolved;
+  };
+  const activeRunways = resolveRunwayUses(scenario.runwayUses);
+  const runwayPresets = scenario.runwayPresets || [
+    { id: "default", label: "Default", runwayUses: scenario.runwayUses },
+  ];
+  requireValue(runwayPresets.length > 0, "runway presets");
+  unique(
+    runwayPresets.map((preset) => preset.id),
+    "runway presets",
+  );
+  for (const preset of runwayPresets) {
+    requireValue(token(preset.id) && text(preset.label), "runway preset");
+    resolveRunwayUses(preset.runwayUses, "runway preset " + preset.id);
+  }
+  if (scenario.compatibleConfigurationRevisions !== undefined) {
+    unique(
+      scenario.compatibleConfigurationRevisions,
+      "compatible configuration revisions",
+    );
+    requireValue(
+      scenario.compatibleConfigurationRevisions.every((revision) =>
+        /^[0-9a-f]{8}$/.test(revision),
+      ),
+      "compatible configuration revisions",
+    );
+  }
+  if (scenario.compatibleAirportRevisions !== undefined) {
+    unique(scenario.compatibleAirportRevisions, "compatible airport revisions");
+    requireValue(
+      scenario.compatibleAirportRevisions.every((revision) =>
+        /^[0-9a-f]{8}$/.test(revision),
+      ),
+      "compatible airport revisions",
+    );
+  }
   unique(scenario.departureStands, "departure stands");
   requireValue(
     scenario.departureStands.length &&
@@ -240,6 +429,28 @@ export function createAirportPackage({
     "initial flights",
   );
   const traffic = scenario.traffic;
+  for (const spread of [
+    traffic?.intervalJitter,
+    traffic?.approachJitter,
+    scenario.turnaroundJitter,
+  ])
+    if (spread !== undefined)
+      requireValue(
+        finite(spread) && spread >= 0 && spread <= 0.5,
+        "random timing range",
+      );
+  for (const key of [
+    "approachSeconds",
+    "approachSeparationSeconds",
+    "decisionSeconds",
+  ])
+    if (traffic?.[key] !== undefined)
+      requireValue(finite(traffic[key]) && traffic[key] > 0, key);
+  requireValue(
+    (traffic?.decisionSeconds || 8) <
+      (traffic?.approachSeconds || 90) * (1 - (traffic?.approachJitter || 0)),
+    "arrival decision timing",
+  );
   requireValue(
     traffic && scenario.scoring && scenario.weather,
     "scenario settings",
@@ -247,8 +458,6 @@ export function createAirportPackage({
   for (const key of [
     "arrivalInterval",
     "departureInterval",
-    "arrivalSpacing",
-    "queueSpacing",
     "maxApproaches",
     "maxDepartures",
     "maxActive",
@@ -260,7 +469,30 @@ export function createAirportPackage({
       calls.length <= traffic.maxActive,
     "traffic capacity",
   );
-  for (const key of ["departurePrefixes", "arrivalPrefixes", "departureTypes"])
+  if (scenario.initialTraffic) {
+    const initial = scenario.initialTraffic;
+    for (const [kind, limit] of [
+      ["departures", traffic.maxDepartures],
+      ["arrivals", traffic.maxApproaches],
+    ]) {
+      const range = initial[kind];
+      requireValue(
+        Array.isArray(range) &&
+          range.length === 2 &&
+          range.every(Number.isSafeInteger) &&
+          range[0] >= 0 &&
+          range[1] >= range[0] &&
+          range[1] <= limit,
+        "initial random " + kind,
+      );
+    }
+    requireValue(
+      calls.length === 0 &&
+        initial.departures[1] + initial.arrivals[1] <= traffic.maxActive,
+      "random and scripted starts must be separate and fit capacity",
+    );
+  }
+  for (const key of ["departurePrefixes", "arrivalPrefixes"])
     requireValue(
       Array.isArray(traffic[key]) &&
         traffic[key].length &&
@@ -269,8 +501,7 @@ export function createAirportPackage({
         ),
       key,
     );
-  requireValue(token(traffic.arrivalType), "arrival type");
-  for (const key of ["turnaroundSeconds", "goAroundSeconds", "cleanupSeconds"])
+  for (const key of ["turnaroundSeconds", "cleanupSeconds"])
     requireValue(finite(scenario[key]) && scenario[key] > 0, key);
   for (const key of ["movement", "goAround", "conflict"])
     requireValue(
@@ -284,74 +515,174 @@ export function createAirportPackage({
     "scenario display",
   );
 
-  const data = {
-    ...geometry,
-    operations,
-    scenario,
-    compatibility,
-    activeRunway: runway,
-    configuration,
-    runway: active.label,
-    oppositeRunway: opposite.label,
-    runwayStart: active.position,
-    runwayEnd: opposite.position,
-    departureHold: configuration.departureHold,
-    departureEntry: configuration.departureEntry,
-    arrivalExit: configuration.arrivalExit,
-    departureHoldLabel: nodes.get(configuration.departureHold).ref,
-  };
+  const primary = activeRunways[0],
+    data = {
+      ...geometry,
+      operations,
+      scenario,
+      fleet,
+      activeRunways,
+      runwayConfigurations,
+      runwayPresets,
+      // Single-runway aliases remain available to simple renderers and fixtures.
+      activeRunway: primary.physical,
+      configuration: primary.configuration,
+      runway: primary.label,
+      oppositeRunway: primary.oppositeLabel,
+      runwayStart: primary.start,
+      runwayEnd: primary.end,
+      departureHold: primary.departureHold,
+      departureEntry: primary.departureEntry,
+      arrivalExit: primary.arrivalExit,
+      departureHoldLabel: primary.departureHoldLabel,
+    };
+  validateFleet(data);
   const sim = new GroundSim(data);
-  for (const edge of geometry.edges) {
-    const a = nodes.get(edge.a),
-      b = nodes.get(edge.b);
-    if (
-      sim.runwayDistance(a) >= runway.protectedHalfWidth &&
-      sim.runwayDistance(b) >= runway.protectedHalfWidth
-    ) {
+  for (const options of Object.values(operations.pushbacks || {}))
+    for (const option of options)
       requireValue(
-        !routeConflict(
-          { ...a, route: [b] },
-          { ...data.runwayStart, route: [data.runwayEnd] },
-        ),
+        option.path.every((id) => !sim.runwaysAt(nodes.get(id)).length),
+        "pushback option crosses runway",
+      );
+  for (const active of runwayConfigurations.filter((r) =>
+    r.capabilities.includes("arrival"),
+  ))
+    for (const exit of active.configuration.arrivalExits || [
+      {
+        id: "standard",
+        node: active.arrivalExit,
+        path: active.configuration.vacatePath,
+      },
+    ])
+      requireValue(
+        sim.runwayDistance(nodes.get(exit.node), active) <
+          active.physical.protectedHalfWidth &&
+          sim.runwayDistance(nodes.get(exit.path.at(-1)), active) >
+            active.physical.releaseDistance &&
+          geometry.stands.some(
+            (s) => sim.path(exit.path.at(-1), s.node).length > 0,
+          ),
+        "unsafe arrival exit",
+      );
+
+  const crossings = operations.runwayCrossings || [];
+  unique(
+    crossings.map((crossing) => crossing.id),
+    "runway crossings",
+  );
+  const controlledRunwayEdges = new Set();
+  const authorizePath = (runwayId, path) =>
+    path.slice(1).forEach((id, index) => {
+      const pair = [path[index], id].sort().join(":");
+      controlledRunwayEdges.add(runwayId + ":" + pair);
+    });
+  for (const active of runwayConfigurations) {
+    if (active.capabilities.includes("departure"))
+      authorizePath(active.runwayId, [
+        active.departureHold,
+        active.departureEntry,
+      ]);
+    if (active.capabilities.includes("arrival"))
+      for (const exit of active.configuration.arrivalExits || [
+        { path: active.configuration.vacatePath },
+      ])
+        authorizePath(active.runwayId, exit.path);
+  }
+  for (const crossing of crossings) {
+    const physical = operations.runways.find(
+      (runway) => runway.id === crossing.runwayId,
+    );
+    requireValue(
+      token(crossing.id) &&
+        text(crossing.label) &&
+        physical &&
+        connectedPath(crossing.path) &&
+        operations.holdingPoints.includes(crossing.path[0]) &&
+        operations.holdingPoints.includes(crossing.path.at(-1)) &&
+        crossing.path.every((id) =>
+          sim
+            .runwaysAt(nodes.get(id))
+            .every((runway) => runway.id === crossing.runwayId),
+        ) &&
+        crossing.path
+          .slice(1, -1)
+          .some(
+            (id) =>
+              sim.runwayDistance(nodes.get(id), { physical }) <
+              physical.protectedHalfWidth,
+          ),
+      "runway crossing",
+    );
+    authorizePath(crossing.runwayId, crossing.path);
+  }
+  if (fleet) {
+    requireValue(
+      scenario.initialTraffic
+        ? sim.planes.filter((p) => p.direction === "departure").length >=
+            scenario.initialTraffic.departures[0] &&
+            sim.planes.filter((p) => p.direction === "arrival").length >=
+              scenario.initialTraffic.arrivals[0]
+        : sim.planes.length === calls.length,
+      "initial aircraft incompatible with stands/routes",
+    );
+    for (const type of new Set([
+      ...fleet.departureTypes,
+      ...fleet.arrivalTypes,
+    ]))
+      requireValue(
+        data.stands.some((s) => sim.supportsType(type, s)),
+        "no complete ground route for " + type,
+      );
+  }
+  for (const edge of geometry.edges)
+    for (const physical of operations.runways) {
+      const pair = [edge.a, edge.b].sort().join(":"),
+        declared = controlledRunwayEdges.has(physical.id + ":" + pair);
+      requireValue(
+        !sim.edgeCrossesRunway(edge.a, edge.b, { physical }) || declared,
         "unprotected runway crossing; explicit crossing support required",
       );
     }
+  for (const active of runwayConfigurations) {
+    if (active.capabilities.includes("departure"))
+      requireValue(
+        sim.runwayDistance(nodes.get(active.departureEntry), active) <
+          active.physical.protectedHalfWidth &&
+          sim.path(active.departureHold, active.departureEntry, active.key)
+            .length >= 2,
+        "unreachable runway entry",
+      );
+    if (active.capabilities.includes("arrival"))
+      requireValue(
+        sim.runwayDistance(nodes.get(active.arrivalExit), active) <
+          active.physical.protectedHalfWidth,
+        "arrival exit is not on runway",
+      );
   }
   requireValue(
-    sim.runwayDistance(nodes.get(data.departureEntry)) <
-      runway.protectedHalfWidth &&
-      sim.runwayDistance(nodes.get(data.arrivalExit)) <
-        runway.protectedHalfWidth,
-    "entry/exit is not on runway",
-  );
-  requireValue(
     operations.holdingPoints.every(
-      (id) => sim.runwayDistance(nodes.get(id)) >= runway.protectedHalfWidth,
+      (id) => !sim.runwaysAt(nodes.get(id)).length,
     ),
     "holding point is inside protected runway",
   );
-  requireValue(
-    sim.path(data.departureHold, data.departureEntry, true).length >= 2,
-    "unreachable runway entry",
-  );
-  const vacated = configuration.vacatePath.at(-1);
-  requireValue(
-    sim.runwayDistance(nodes.get(vacated)) > runway.releaseDistance,
-    "arrival does not clear runway",
-  );
   for (const s of stands.values()) {
     requireValue(
-      sim.path(s.exit, data.departureHold).length >= 2,
+      activeRunways
+        .filter((r) => r.departures)
+        .some((r) => sim.path(s.exit, r.departureHold).length >= 2),
       "stand cannot reach departure hold: " + s.id,
     );
     requireValue(
-      sim.path(vacated, s.node).length >= 2,
+      activeRunways
+        .filter((r) => r.arrivals)
+        .some(
+          (r) =>
+            sim.path(r.configuration.vacatePath.at(-1), s.node).length >= 2,
+        ),
       "arrival cannot reach stand: " + s.id,
     );
     requireValue(
-      s.path.every(
-        (id) => sim.runwayDistance(nodes.get(id)) >= runway.protectedHalfWidth,
-      ),
+      s.path.every((id) => !sim.runwaysAt(nodes.get(id)).length),
       "pushback crosses protected runway: " + s.id,
     );
   }

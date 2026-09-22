@@ -9,7 +9,7 @@ import {
   restoreView,
   airportRevision,
 } from "../src/persistence.js";
-import { defaultAirport as data } from "../src/airports/catalog.js";
+import { defaultAirport as data } from "./fixtures/standard-airport.js";
 const clone = (value) => JSON.parse(JSON.stringify(value));
 const memory = () => {
   const entries = new Map();
@@ -33,7 +33,7 @@ const advance = (s, id, state) => {
   assert.equal(s.planes.find((p) => p.id === id).state, state);
 };
 
-test("save restores an active runway, mid-motion aircraft, counters, schedules, logs and conflict Set", () => {
+test("save restores an active runway, mid-motion aircraft, counters, schedules and conflict Set", () => {
   const s = setup();
   s.command(1, "pushback");
   s.command(4, "land");
@@ -56,11 +56,13 @@ test("save restores an active runway, mid-motion aircraft, counters, schedules, 
     result = saves.load(restored);
   assert.equal(result.status, "restored");
   assert.equal(result.ui.selected, 4);
-  assert.equal(result.ui.speed, 8);
+  assert.equal(result.ui.speed, 1);
   assert.equal(result.ui.paused, true);
   assert.ok(restored.conflictPairs instanceof Set);
-  assert.equal(restored.runwayOwner, 4);
+  assert.equal(restored.runwayOwner, null);
+  assert.equal(restored.clearedArrivalForRunway(restored.planes[3]).id, 4);
   assert.equal(restored.nextArrival, Infinity);
+  assert.equal("logs" in captureSimulation(restored), false);
   assert.deepEqual(captureSimulation(restored), captureSimulation(s));
   for (let i = 0; i < 100; i++) {
     restored.tick(0.1);
@@ -120,9 +122,6 @@ test("invalid saves never partially mutate the live simulation", () => {
     (state) => {
       state.time = -1;
     },
-    (state) => {
-      state.logs[0].text = "<img onerror=alert(1)>";
-    },
   ]) {
     const s = setup(),
       before = clone(captureSimulation(s)),
@@ -133,10 +132,10 @@ test("invalid saves never partially mutate the live simulation", () => {
   }
 });
 
-test("corrupt or incompatible saves are retained for recovery", () => {
+test("corrupt or incompatible saves remain untouched until explicit deletion", () => {
   for (const corrupt of [
     (raw) => "{bad json",
-    (raw) => raw.replace('"version":1', '"version":999'),
+    (raw) => raw.replace('"version":2', '"version":999'),
     (raw) => raw.replace('"airport":"EGPH"', '"airport":"OTHER"'),
   ]) {
     const store = memory(),
@@ -146,7 +145,7 @@ test("corrupt or incompatible saves are retained for recovery", () => {
     const bad = corrupt(store.getItem(saves.key));
     store.setItem(saves.key, bad);
     assert.equal(saves.load(s).status, "invalid");
-    assert.equal(store.getItem(saves.key + ":recovery"), bad);
+    assert.equal(store.getItem(saves.key), bad);
   }
 });
 
@@ -178,7 +177,7 @@ test("missing state-specific references reject a save before it can fail during 
   assert.equal(restoreSimulation(new GroundSim(data), gate), false);
 });
 
-test("blocked storage and quota errors do not stop the simulation or destroy an old save", () => {
+test("blocked storage and quota errors do not destroy an old save", () => {
   const blocked = new GameStorage(data, () => {
     throw new Error("SecurityError");
   });
@@ -202,19 +201,19 @@ test("invalid view preferences fall back safely without discarding the game", ()
     {
       selected: 999,
       speed: 999,
-      filter: "invalid",
       camera: { x: 1e300, y: 0, zoom: 0 },
       waypoints: ["missing"],
       destination: "missing",
+      runwayChoice: "missing",
     },
     s,
   );
   assert.equal(ui.selected, 1);
-  assert.equal(ui.speed, 4);
-  assert.equal(ui.filter, "all");
+  assert.equal(ui.speed, 1);
   assert.equal(ui.camera, null);
   assert.deepEqual(ui.waypoints, []);
   assert.equal(ui.destination, "");
+  assert.equal(ui.runwayChoice, "");
 });
 
 test("an explicit restart replaces the saved session", () => {
@@ -235,6 +234,7 @@ test("an explicit restart replaces the saved session", () => {
 
 test("snapshots restore every stage of a full departure and arrival cycle", () => {
   const s = setup();
+  s.planes = s.planes.filter((p) => p.direction === "departure");
   const check = () => {
     const restored = new GroundSim(data);
     assert.ok(restoreSimulation(restored, clone(captureSimulation(s))));
@@ -257,11 +257,13 @@ test("snapshots restore every stage of a full departure and arrival cycle", () =
   check();
   advance(s, 1, "done");
   check();
+  s.nextId = 4;
+  s.spawnArrival("KLM927", "A333");
   s.command(4, "land");
   check();
   advance(s, 4, "inbound");
   check();
-  s.command(4, "taxi", { stand: "14" });
+  s.command(4, "taxi", { stand: "1" });
   check();
   advance(s, 4, "parked");
   check();

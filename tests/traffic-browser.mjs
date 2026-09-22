@@ -1,5 +1,6 @@
 import { baseURL, browserChannel, artifact } from "./browser-support.mjs";
 import { chromium } from "playwright";
+import { useScriptedTraffic } from "./scripted-browser.mjs";
 import assert from "node:assert/strict";
 const browser = await chromium.launch({
   channel: browserChannel,
@@ -11,14 +12,20 @@ try {
   });
   const errors = [];
   page.on("pageerror", (e) => errors.push(e.message));
+  await useScriptedTraffic(page.context());
   await page.goto(baseURL);
   await page.waitForFunction(() => window.groundControl);
   await page.evaluate(() => {
     groundControl.setPaused(true);
     groundControl.sim.nextArrival = groundControl.sim.nextDeparture = Infinity;
   });
-  const select = (call) =>
-    page.getByRole("button", { name: "Select " + call }).click();
+  const select = async (call) => {
+    const point = await page.evaluate((call) => {
+      const plane = groundControl.sim.planes.find((item) => item.call === call);
+      return groundControl.map.aircraftScreen(plane);
+    }, call);
+    await page.mouse.click(point.x, point.y);
+  };
   const action = (label) =>
     page.getByRole("menuitem", { name: label, exact: false }).click();
   const advance = async (id, condition) => {
@@ -36,39 +43,8 @@ try {
     assert.ok(result);
   };
 
-  await page.waitForFunction(
-    () => document.querySelectorAll(".request-group").length === 2,
-  );
-  assert.equal(
-    await page
-      .getByRole("region", { name: "Request pushback", exact: true })
-      .locator(".strip")
-      .count(),
-    3,
-  );
-  assert.equal(await page.locator(".strip-status").count(), 0);
-  assert.equal(await page.locator(".strip.request").count(), 4);
-  assert.equal(
-    await page.locator(".strip").first().innerText(),
-    "BAW1439\nA320 / S3",
-  );
-  assert.equal(
-    await page
-      .locator(".strip.request")
-      .first()
-      .evaluate((el) => getComputedStyle(el, "::after").animationName),
-    "request-pulse",
-  );
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  assert.equal(
-    await page
-      .locator(".strip.request")
-      .first()
-      .evaluate((el) => getComputedStyle(el, "::after").animationName),
-    "none",
-  );
-  await page.emulateMedia({ reducedMotion: "no-preference" });
-  await page.screenshot({ path: artifact("grouped-requests-desktop.png") });
+  assert.equal(await page.locator("#traffic-panel").count(), 0);
+  await page.screenshot({ path: artifact("map-requests-desktop.png") });
 
   await select("BAW1439");
   await page.keyboard.press("p");
@@ -89,11 +65,6 @@ try {
   await action("Clear taxi");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
   await advance(1, "atpoint");
-  await page.waitForFunction(() =>
-    [...document.querySelectorAll(".flight-group h3")].some((el) =>
-      el.textContent.includes("Request onward taxi"),
-    ),
-  );
   await select("BAW1439");
   await page.keyboard.press("t");
   await page.keyboard.press("Enter");
@@ -172,12 +143,6 @@ try {
     "giveway",
   );
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
-  await page.waitForFunction(
-    () =>
-      !document
-        .querySelector('.strip[data-flight="1"]')
-        .classList.contains("request"),
-  );
   await select("BAW1439");
   await page.keyboard.press("y");
   await page.evaluate(() => {
@@ -190,9 +155,6 @@ try {
   await page.evaluate(() => {
     groundControl.sim.planes.find((p) => p.id === 2).state = "taxi";
   });
-  await page.getByRole("button", { name: "Arrivals", exact: true }).click();
-  assert.equal(await page.locator(".strip.departure").count(), 0);
-  await page.getByRole("button", { name: "All flights", exact: true }).click();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await select("BAW1439");
@@ -206,10 +168,10 @@ try {
       box.y + box.height <= 844,
   );
   await page.keyboard.press("Escape");
-  await page.screenshot({ path: artifact("grouped-requests-mobile.png") });
+  await page.screenshot({ path: artifact("map-requests-mobile.png") });
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: grouped requests, reduced motion, holding-point and hold-short pickers, onward clearance, follow/give-way commands, keyboard and mouse actions, filters, compact mobile menus.",
+    "PASS: panel-free map control, holding-point and hold-short pickers, onward clearance, follow/give-way commands, keyboard and mouse actions and compact mobile menus.",
   );
 } finally {
   await browser.close();

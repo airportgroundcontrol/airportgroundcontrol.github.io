@@ -19,8 +19,10 @@ export function populateAirportUI(airport, catalog, onSelect) {
   text("#weather-wind", airport.scenario.weather.wind);
   text(".icao", airport.id);
   text(".airport-name", airport.name);
-  text(".runway-symbol", airport.runway);
-  text(".frequency", airport.operations.frequency);
+  text(
+    ".runway-symbol",
+    airport.activeRunways.map((runway) => runway.label).join(" / "),
+  );
   text("#map-loading", "Loading " + airport.name + " airfield...");
   const attribution = document.querySelector(".map-footer a");
   attribution.textContent = "© " + airport.source.name;
@@ -39,7 +41,7 @@ export function populateAirportUI(airport, catalog, onSelect) {
       ["small", `${item.id} · ${item.country}`],
       [
         "small",
-        `Runway ${item.activeRunway.label} · ${item.stands.length} playable stands`,
+        `${item.activeRunways.length} active runway${item.activeRunways.length === 1 ? "" : "s"} · ${item.stands.length} playable stands`,
       ],
     ]) {
       const element = document.createElement(tag);

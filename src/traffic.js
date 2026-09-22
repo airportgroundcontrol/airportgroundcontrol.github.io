@@ -92,9 +92,9 @@ export function routeConflict(
 }
 
 /** @param {Pick<import('./domain/contracts').TrafficOrder, 'point' | 'releaseAt'>} order @param {TrafficRoute | null | undefined} target */
-export function targetCleared(order, target) {
+export function targetCleared(order, target, clearance = separation) {
   if (!target || target.state === "done") return true;
-  if (length(target, order.point) < separation) return false;
+  if (length(target, order.point) < clearance) return false;
   if ((target.travelled || 0) >= order.releaseAt) return true;
   // A revised clearance that no longer approaches the crossing also releases the waiting aircraft.
   return distanceAhead(target, order.point, 30, Infinity) === Infinity;

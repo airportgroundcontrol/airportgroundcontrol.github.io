@@ -1,6 +1,14 @@
 # Ground Control: Architecture Implementation Plan
 
-Status: Phase 0/1 foundation complete; GameSession and the single-runway airport/scenario package refactor implemented. Broader Phase 2 save tooling and Phases 4-7 remain planned.
+## Current Overrides
+
+The aircraft-realism update supersedes older compatibility requirements below. The user explicitly requested **no legacy support** and later removed manual game transfer: format-2 automatic local saves only, no v1 migration, alternate engine, export/import, or previous/recovery UI. Exclusive browser writer locks and fixed 0.05-second steps are implemented. Missing Web Locks uses volatile play, not a non-atomic lock fallback. Writer takeover remains unimplemented.
+
+Eleven aircraft definitions/silhouettes, type-specific movement parameters, stand/route eligibility, adjacent reservations, tug disconnection, dimension-based separation and simplified departure-wake delays are implemented. Edinburgh and Frankfurt use real OSM geometry; fleet restrictions are game assumptions. Curved gear-based paths, swept-footprint collision detection, jet blast and detailed runway/arrival-wake modeling remain incomplete. See `AIRCRAFT_REALISM_PLAN.md` for the current scope. Work is local-only; do not publish.
+
+The checkpoint and original phased plan below are historical design context, not the current feature inventory. Use `CONTINUE_HERE.md` and `ROADMAP.md` for current status.
+
+Status: Phase 0/1 foundation complete; GameSession, data-driven airport packages, multi-runway resources and persistent live runway configuration are implemented. Broader Phase 2 save tooling and the remaining physical-clearance/performance work remain planned.
 Baseline: gameplay commit `fb7b28f85f486d62a2cb5040ccc13e3dc212aa25`; handoff commit `3acbe2295a00cd3442ece851e95aa7db6e440479`.
 Goal: evolve the playable MVP into a maintainable, multi-airport ground-control game without a rewrite, a backend, or lost progress.
 
@@ -8,11 +16,11 @@ Goal: evolve the playable MVP into a maintainable, multi-airport ground-control 
 
 - Phase 0: 23 archived v1 saves with continuation digests, configurable/self-contained browser runner, desktop/mobile references and same-machine performance report under `tests/baselines/`.
 - Phase 1: readable source, `web/`, unchanged geometry bytes, disposable build output, offline packaging and initial contracts. Strict TypeScript still covers contracts/traffic geometry, not the whole legacy engine/UI.
-- Phase 2 subset: `GameSession` owns engine, commands/results/radio events, pacing, restore/save/restart/disposal. UI and integration commands share dispatch. Incompatible originals cannot be overwritten until explicit Restart. General migrations, recovery downloads, export/import, backups and tab ownership remain unfinished.
-- Airport package foundation (Phase 3): immutable geometry/operations/scenario inputs with runtime validation; no Edinburgh-specific operating assumptions in shared engine/map/UI/importer. Curated arrival vacate paths replace inferred first-stand exits. Map fitting/labels and all airport metadata come from configuration. The generic importer requires an explicit descriptor and writes only new validated candidates. One physical runway remains the supported scope; aircraft-size eligibility and richer protected-area rules are future work.
+- Phase 2 subset: `GameSession` owns engine, command results, pacing, restore/save/reset/disposal. UI and integration commands share dispatch. The former radio event history was removed from runtime and persistence. Incompatible state blocks play until explicit deletion successfully writes a replacement. Manual transfer and save-history features are out of scope by user request.
+- Airport package foundation (Phase 3/6): immutable geometry/operations/scenario inputs with runtime validation; no Edinburgh-specific operating assumptions in shared engine/map/UI/importer. Multiple physical runways and active ends, per-aircraft runway assignment, independent/shared pavement occupancy, per-runway wake state, declared runway crossings and airport-constrained runway presets/custom roles are supported. Curated arrival vacate paths replace inferred exits. The generic importer requires an explicit descriptor and writes only new validated candidates.
 - User-directed sequence: GameSession first, then airport independence, without waiting for all Phase 2 product tooling. No aircraft-state migration was needed: v1 state/geometry and all 23 continuation fixtures remain identical. Additive envelope metadata identifies scenario/operations/configuration and pinned legacy compatibility. See `data/airports/README.md`.
-- Verification: 70 unit/fixture/importer checks, strict current type checks, four browser suites, desktop/mobile Canvas checks, synthetic per-airport save switching and offline builds. Original Edinburgh OSM reimport matches existing geometry bytes exactly.
-- Next: complete save evolution/tab ownership before changing state shapes, and continue focused UI/typed-boundary extraction. A second real airport is not yet included.
+- Verification: 120 unit/fixture/importer checks, strict current type checks, eight browser suites, desktop/mobile Canvas and runway-planner checks, anticipated-separation/rolling-departure reload coverage, production/synthetic per-airport save switching and offline builds. Original Edinburgh OSM reimport matches existing geometry bytes exactly.
+- Next: continue focused UI/typed-boundary extraction, gear-aware trajectories and swept-footprint clearance. Frankfurt is the second bundled real airport.
 - Publishing this checkpoint is currently blocked: the connected account returns `Sites project not found` for the existing site. Local development and testing are unaffected; existing hosting metadata/audience remain untouched.
 
 ## Decisions and Guardrails
@@ -59,7 +67,7 @@ Airport package + scenario
  routing traffic runway rules
         |
         v
- Read-only view data ----> Canvas map + HTML panels
+ Read-only view data ----> Canvas map + compact dialogs
                                 |
                                 v
                           user intentions
@@ -115,15 +123,15 @@ Depends on Phase 1; complete before changing simulation state shapes.
 
 Deliverables:
 - Introduce a `GameSession` that owns the live engine, command dispatch, selected airport/scenario and save lifecycle. Keep command application synchronous initially; do not add an event bus framework.
-- Route UI and optional integration commands through this entry point. Return structured results/events so saving and radio updates cannot be missed by one input path.
+- Route UI and optional integration commands through this entry point. Return structured command results so saving cannot be missed by one input path.
 - Introduce a tested migration pipeline: parse envelope -> recognize version -> migrate a copy -> validate against airport data -> construct the engine -> activate session.
 - Separate save-schema version, airport geometry revision and scenario version. Preserve original bytes until migration, validation and the replacement write have all succeeded.
-- Unsupported or damaged saves must not be silently replaced with a new game. Offer recovery/download or an explicit fresh start. Keep a bounded last-known-good backup where space permits.
-- Add validated save export/import. Preview airport/version details before replacing a session; reject invalid references, oversized files and unsupported future versions.
+- Unsupported or damaged saves must not be silently replaced with a new game. Block play and require an explicit delete/reset from the top bar.
+- Manual save export/import and save-history UI were deliberately removed; persistence remains automatic and browser-local.
 - Add single-writer ownership per airport save. Only the active owning tab simulates/writes; a second tab is read-only until an explicit takeover. Use browser locking when available; otherwise refuse competing writes and present a single-tab fallback rather than pretending a storage timestamp is atomic.
 - Keep localStorage for the current compact snapshots behind an adapter. Change storage technology only if measured size/write cost requires it. Test hosted and local-file behavior separately.
 
-Acceptance: every version-1 fixture restores with identical clearances and progress; migration is repeatable without modifying its input; blocked/quota-limited storage cannot destroy the previous valid save; a stale tab cannot overwrite a takeover. Export/import works offline.
+Acceptance now follows the no-legacy/no-transfer decision: archived version-1 fixtures are rejected without mutation; blocked/quota-limited storage cannot unlock an unsaved replacement; a stale tab cannot write concurrently; current format reloads identically offline.
 
 ## Phase 3: Data-Driven Airports and Scenarios
 
@@ -148,13 +156,15 @@ Deliverables:
 - Extract menus, flight groups, toolbar and keyboard handling from `app.js`. Keep only composition in the entry point.
 - Expose one engine/session query for available actions and rejection reasons; menus, shortcuts and integration commands use the same capability definitions and authoritative validation.
 - Split persistent UI preferences/drafts from temporary popups, focus and hover state. Saving should observe state changes, not arbitrary global clicks/keystrokes.
-- Pass the renderer a read-only view model and viewport insets. Remove queries for panel/header DOM elements from map logic; emit selection/waypoint/pan intentions back to the session/UI.
+- Pass the renderer a read-only view model and viewport insets. Remove queries for header DOM elements from map logic; emit selection/waypoint/pan intentions back to the session/UI.
 - Separate world coordinates from screen coordinates and retain the current camera behavior, readable labels and hit targets.
 - Keep fixed-size controls, request grouping, reduced-motion behavior, keyboard/form guards and popup closing behavior unchanged.
 
-Acceptance: mouse, keyboard and integration calls produce equivalent outcomes; focus is stable while lists update; map fitting works with visible/hidden panels at all existing viewports; draft routes and preferences survive reload. No visual redesign.
+Acceptance: mouse, keyboard and integration calls produce equivalent outcomes; map fitting works at all existing viewports; draft routes and preferences survive reload.
 
 ## Phase 5: Reproducible Simulation Timing
+
+Current delivery: fixed 0.05-second steps, hidden-tab pause and saved seeded traffic are implemented. New-game entropy comes from `GameSession`; simulation draws and sampled turnaround durations persist exactly. Tick-stamped command traces and replay controls remain queued. Older saves are preserved but not migrated, per the user's no-legacy-support requirement.
 
 Depends on Phases 2-4; establish this before expanding runway interactions.
 
@@ -166,7 +176,7 @@ Deliverables:
 - Add a bounded command/event trace for reproducing test failures. Full replay UI is a later product feature.
 - Migrate old saves without applying elapsed wall time or invalidating remaining routes. Start old sessions at a defined tick with zero accumulated debt.
 
-Acceptance: identical initial state and tick-stamped commands produce identical state at the same tick within one supported runtime regardless of 30/60/120Hz rendering or 1x/4x/8x pacing. Assert numerical tolerances across browser engines, not unproven bitwise identity. Pause, resume, reload and background tests pass.
+Acceptance: identical initial state and tick-stamped commands produce identical state at the same tick within one supported runtime regardless of 30/60/120Hz rendering or 1x/4x pacing. Assert numerical tolerances across browser engines, not unproven bitwise identity. Pause, resume, reload and background tests pass.
 
 ## Phase 6: Multiple Runways and Protected Crossings
 
@@ -178,7 +188,7 @@ Deliverables:
 - Model conflicts between intersecting runways/protected areas, not only occupancy within each runway. Independent non-conflicting runways may operate together; crossing resources are reserved atomically.
 - Store intended runway end and associated entry/exit/hold in aircraft clearance state. An ordinary taxi route must stop before every protected runway boundary without a matching crossing/entry clearance.
 - Replace broad `allowRunway=true` routing with permission for the specifically cleared resource and route segment. A lineup clearance cannot authorize passage across another runway.
-- Add runway selection and status controls using the extracted UI contracts. Initially allow configuration changes only when affected runway resources and pending operations are clear; reject unsafe mid-operation changes.
+- Implemented: runway selection/status controls use airport presets or capability-constrained custom roles. Mid-operation changes preserve committed approaches and runway-bound departures, reroute uncommitted departures and expose a persisted transition state until the old flow clears.
 - Migrate version-1/legacy runway ownership to Edinburgh's physical runway resource without releasing an existing aircraft's protection.
 
 Acceptance: tests cover opposing ends of one runway, two independent runways, intersecting runways, runway crossings, held crossings, landing/vacating, wrong-runway commands, cancelled reservations, save/reload while occupied, and invalid stand/runway routes. Edinburgh's existing cycle still passes.

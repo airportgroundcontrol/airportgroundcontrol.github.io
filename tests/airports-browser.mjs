@@ -49,7 +49,6 @@ try {
   await page.waitForFunction(() => window.groundControl);
   await page.evaluate(() => groundControl.setPaused(true));
   assert.equal(await page.title(), "Ground Control | North Field");
-  assert.equal(await page.locator(".frequency").textContent(), "123.450");
   assert.equal(await page.locator(".runway-symbol").textContent(), "17");
   assert.equal(await page.locator("#clock").textContent(), "10:00:00");
   assert.ok(!/Edinburgh|EGPH|D1/.test(await page.locator("body").innerText()));
@@ -62,9 +61,7 @@ try {
         !canvasLabels.has("24"),
     ),
   );
-  await page
-    .getByRole("button", { name: "Select TST101", exact: true })
-    .click();
+  await page.evaluate(() => groundControl.select(1));
   await page.keyboard.press("p");
   assert.ok(await page.locator("#aircraft-menu").isHidden());
   assert.equal(
@@ -84,8 +81,6 @@ try {
     { width: 390, height: 844 },
   ]) {
     await page.setViewportSize(viewport);
-    if (viewport.width < 600)
-      await page.getByRole("button", { name: "Toggle flight panel" }).click();
     await page.getByRole("button", { name: "Fit airport" }).click();
     const camera = await page.evaluate(() => {
       const { map, sim } = groundControl;
@@ -100,7 +95,7 @@ try {
       for (let i = 0; i < pixels.length; i += 400)
         colors.add(`${pixels[i]},${pixels[i + 1]},${pixels[i + 2]}`);
       return {
-        points: sim.planes.map((p) => map.screen(p)),
+        points: sim.planes.map((p) => map.aircraftScreen(p)),
         width: map.width,
         height: map.height,
         colors: colors.size,
@@ -156,7 +151,7 @@ try {
   assert.equal(await offline.evaluate(() => groundControl.sim.data.id), "TEST");
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: shared UI/renderer on synthetic airport, dynamic runway/stand/radio labels, session commands, desktop/mobile framing, per-airport save switching and offline catalog.",
+    "PASS: shared UI/renderer on synthetic airport, dynamic runway/stand labels, session commands, desktop/mobile framing, per-airport save switching and offline catalog.",
   );
 } finally {
   await browser.close();

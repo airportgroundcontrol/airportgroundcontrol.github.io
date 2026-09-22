@@ -23,6 +23,17 @@ const pairs = [
 ];
 const lookup = (id) => nodes.find((n) => n.id === id);
 export const syntheticInput = {
+  fleet: {
+    version: 1,
+    basis: "game-assumptions",
+    initialTypes: {},
+    arrivalTypes: ["E190"],
+    departureTypes: ["E190"],
+    standGroups: [{ stands: ["A1", "B2"], maxLength: 70, maxWingspan: 65 }],
+    exclusionGroups: [],
+    defaultRouteTypes: ["AT72", "E190", "A320", "B738", "A333"],
+    routeRules: [],
+  },
   geometry: {
     id: "TEST",
     iata: "TST",
@@ -119,7 +130,14 @@ export const syntheticInput = {
   scenario: {
     id: "test-day",
     version: 1,
-    activeRunwayEnd: "southbound",
+    runwayUses: [
+      {
+        runwayId: "north-south",
+        endId: "southbound",
+        arrivals: true,
+        departures: true,
+      },
+    ],
     initialDepartures: [{ stand: "A1", call: "TST101" }],
     initialArrivals: ["TST202"],
     departureStands: ["A1", "B2"],
@@ -129,15 +147,10 @@ export const syntheticInput = {
       maxApproaches: 1,
       maxDepartures: 3,
       maxActive: 8,
-      arrivalSpacing: 300,
-      queueSpacing: 200,
       departurePrefixes: ["DEP"],
       arrivalPrefixes: ["ARR"],
-      departureTypes: ["E190"],
-      arrivalType: "E190",
     },
     turnaroundSeconds: 50,
-    goAroundSeconds: 300,
     cleanupSeconds: 60,
     scoring: { movement: 25, goAround: 5, conflict: 10 },
     clockStartSeconds: 36000,

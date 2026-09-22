@@ -1,45 +1,297 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="dark">
-  <meta name="description" content="Browser-only airport ground control on real taxiway networks.">
-  <title>Ground Control</title>
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23181d21'/%3E%3Cpath d='M5 20 14 14 14 6 18 6 18 14 27 20 27 23 18 20 18 25 21 27 11 27 14 25 14 20 5 23Z' fill='%23f5d45a'/%3E%3C/svg%3E">
-  <link rel="stylesheet" href="style.css">
-</head>
-<body>
-  <main class="workspace">
-    <section class="map-panel" aria-label="Airport ground movement map">
-      <canvas id="map" aria-label="Airport map" tabindex="0"></canvas>
-      <div class="map-heading"><span class="eyebrow"></span><h1></h1><div class="map-weather"><i data-lucide="sun"></i> <span id="weather-conditions"></span> <span id="weather-wind"></span></div></div>
-      <div class="map-controls"><button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in"><i data-lucide="plus"></i></button><button id="zoom-out" title="Zoom out (-)" aria-label="Zoom out"><i data-lucide="minus"></i></button><button id="fit" title="Fit airport (F)" aria-label="Fit airport"><i data-lucide="scan"></i></button><button id="labels" class="active" title="Toggle map labels" aria-label="Toggle map labels" aria-pressed="true"><i data-lucide="tags"></i></button></div>
-      <div class="compass"><span>N</span><i data-lucide="navigation-2"></i></div>
-      <div id="route-banner" class="route-banner" hidden><span id="route-text"></span><button id="route-clear" title="Reset waypoints" aria-label="Reset waypoints"><i data-lucide="rotate-ccw"></i></button><button id="route-issue">Clear taxi <kbd>Enter</kbd></button></div>
-      <div class="map-footer"><div class="legend"><span><b class="key dep"></b>Departure</span><span><b class="key arr"></b>Arrival</span><span><b class="key route"></b>Cleared route</span></div><a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">© OpenStreetMap contributors</a></div>
-      <div id="map-loading" class="loading">Loading airfield...</div>
-    </section>
-    <aside id="traffic-panel" class="control-panel" aria-label="Flight control panel">
-      <div class="panel-title"><h2>Aircraft <span id="traffic-count">04</span></h2><span id="pending" class="pending">4 requests</span></div>
-      <div class="filters" aria-label="Flight filters"><button data-filter="all" class="active">All flights</button><button data-filter="departure">Departures</button><button data-filter="arrival">Arrivals</button></div>
-      <div id="strips" class="strips"></div>
-      <details class="communications" open><summary><span>Radio log</span><span class="frequency"></span></summary><div id="radio-log" aria-live="polite"></div></details>
-    </aside>
-    <section id="aircraft-menu" class="aircraft-menu" aria-label="Aircraft actions" tabindex="-1" hidden></section>
-  </main>
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark"><i data-lucide="plane"></i></span><span>GROUND CONTROL</span></div>
-    <button id="airport-button" class="airport-button"><span class="icao"></span><span class="airport-name"></span><i data-lucide="chevron-down"></i></button>
-    <div class="scoreboard" aria-label="Operation statistics"><div><span>MOVEMENTS</span><strong id="movements">0</strong></div><div><span>SCORE</span><strong id="score">0</strong></div><div><span>CONFLICTS</span><strong id="incidents">0</strong></div></div>
-    <div id="runway-badge" class="runway-badge"><span class="runway-symbol"></span><span id="runway-status">Available</span></div>
-    <div class="clock-group"><span id="clock"></span><span id="simulation-status">RUNNING</span></div>
-    <div class="playback"><button id="pause" class="icon-button" title="Pause simulation (Space)" aria-label="Pause simulation"><i data-lucide="pause"></i></button><div class="speeds" aria-label="Simulation speed"><button data-speed="1">1x</button><button data-speed="4" class="active">4x</button><button data-speed="8">8x</button></div></div>
-    <div class="topbar-actions"><button id="shortcuts" class="icon-button" title="Keyboard shortcuts (?)" aria-label="Keyboard shortcuts"><i data-lucide="keyboard"></i></button><button id="toggle-panel" class="icon-button active" title="Toggle flight panel" aria-label="Toggle flight panel" aria-expanded="true" aria-controls="traffic-panel"><i data-lucide="panel-right"></i></button><button id="restart" class="icon-button" title="Restart simulation" aria-label="Restart simulation"><i data-lucide="rotate-ccw"></i></button></div>
-  </header>
-  <div id="toast" role="status" hidden></div>
-  <dialog id="airport-dialog"><form method="dialog"><button class="dialog-close icon-button" aria-label="Close airport catalog"><i data-lucide="x"></i></button></form><span class="eyebrow">AIRPORT CATALOG</span><h2>Select an airfield</h2><div id="airport-choices"></div><p class="catalog-note"></p><a download>Airport data</a></dialog>
-  <dialog id="restart-dialog"><h2>Restart simulation?</h2><p>Aircraft and scores will reset.</p><div class="dialog-actions"><button id="cancel-restart" class="secondary">Cancel</button><button id="confirm-restart" class="primary">Restart</button></div></dialog>
-  <dialog id="shortcuts-dialog"><form method="dialog"><button class="dialog-close icon-button" aria-label="Close keyboard shortcuts"><i data-lucide="x"></i></button></form><h2>Keyboard shortcuts</h2><dl class="shortcut-list"><div><dt>Pushback</dt><dd><kbd>P</kbd></dd></div><div><dt>Plan taxi route</dt><dd><kbd>T</kbd></dd></div><div><dt>Issue taxi clearance</dt><dd><kbd>Enter</kbd></dd></div><div><dt>Hold / resume</dt><dd><kbd>H</kbd></dd></div><div><dt>Clear to land</dt><dd><kbd>L</kbd></dd></div><div><dt>Line up &amp; wait</dt><dd><kbd>U</kbd></dd></div><div><dt>Clear for takeoff</dt><dd><kbd>D</kbd></dd></div><div><dt>Go around</dt><dd><kbd>G</kbd></dd></div><div><dt>Taxi to holding point</dt><dd><kbd>B</kbd></dd></div><div><dt>Hold short of point / taxiway</dt><dd><kbd>S</kbd></dd></div><div><dt>Follow aircraft</dt><dd><kbd>Y</kbd></dd></div><div><dt>Give way to aircraft</dt><dd><kbd>W</kbd></dd></div><div><dt>Continue past holding limit</dt><dd><kbd>C</kbd></dd></div><div><dt>Cancel traffic instruction</dt><dd><kbd>X</kbd></dd></div><div><dt>Next request</dt><dd><kbd>N</kbd></dd></div><div><dt>Pause / resume simulation</dt><dd><kbd>Space</kbd></dd></div><div><dt>Fit airport</dt><dd><kbd>F</kbd></dd></div><div><dt>Close menu / cancel route</dt><dd><kbd>Esc</kbd></dd></div></dl></dialog>
-  <script type="module" src="app.js"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta
+      name="description"
+      content="Browser-only airport ground control on real taxiway networks."
+    />
+    <title>Ground Control</title>
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23181d21'/%3E%3Cpath d='M5 20 14 14 14 6 18 6 18 14 27 20 27 23 18 20 18 25 21 27 11 27 14 25 14 20 5 23Z' fill='%23f5d45a'/%3E%3C/svg%3E"
+    />
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <main class="workspace">
+      <section class="map-panel" aria-label="Airport ground movement map">
+        <canvas id="map" aria-label="Airport map" tabindex="0"></canvas>
+        <div class="map-heading">
+          <span class="eyebrow"></span>
+          <h1></h1>
+          <div class="map-weather">
+            <i data-lucide="sun"></i> <span id="weather-conditions"></span>
+            <span id="weather-wind"></span>
+          </div>
+        </div>
+        <div class="map-controls">
+          <button id="zoom-in" title="Zoom in (+)" aria-label="Zoom in">
+            <i data-lucide="plus"></i></button
+          ><button id="zoom-out" title="Zoom out (-)" aria-label="Zoom out">
+            <i data-lucide="minus"></i></button
+          ><button id="fit" title="Fit airport (F)" aria-label="Fit airport">
+            <i data-lucide="scan"></i></button
+          ><button
+            id="labels"
+            class="active"
+            title="Toggle map labels"
+            aria-label="Toggle map labels"
+            aria-pressed="true"
+          >
+            <i data-lucide="tags"></i>
+          </button>
+        </div>
+        <div class="compass">
+          <span>N</span><i data-lucide="navigation-2"></i>
+        </div>
+        <div id="route-banner" class="route-banner" hidden>
+          <span id="route-text"></span
+          ><button
+            id="route-clear"
+            title="Reset waypoints"
+            aria-label="Reset waypoints"
+          >
+            <i data-lucide="rotate-ccw"></i></button
+          ><button id="route-issue">Clear taxi <kbd>Enter</kbd></button>
+        </div>
+        <div class="map-footer">
+          <div class="legend">
+            <span><b class="key stand"></b>Stand</span
+            ><span><b class="key taxi"></b>Taxi</span
+            ><span><b class="key landing"></b>Landing</span
+            ><span><b class="key takeoff"></b>Takeoff</span
+            ><span><b class="key pushback"></b>Pushback</span>
+          </div>
+          <a
+            href="https://www.openstreetmap.org/copyright"
+            target="_blank"
+            rel="noreferrer"
+            >© OpenStreetMap contributors</a
+          >
+        </div>
+        <div id="map-loading" class="loading">Loading airfield...</div>
+      </section>
+      <section
+        id="aircraft-menu"
+        class="aircraft-menu"
+        aria-label="Aircraft actions"
+        tabindex="-1"
+        hidden
+      ></section>
+    </main>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark"><i data-lucide="plane"></i></span
+        ><span>GROUND CONTROL</span>
+      </div>
+      <button id="airport-button" class="airport-button">
+        <span class="icao"></span><span class="airport-name"></span
+        ><i data-lucide="chevron-down"></i>
+      </button>
+      <div class="scoreboard" aria-label="Operation statistics">
+        <div><span>MOVEMENTS</span><strong id="movements">0</strong></div>
+        <div><span>SCORE</span><strong id="score">0</strong></div>
+        <div><span>CONFLICTS</span><strong id="incidents">0</strong></div>
+      </div>
+      <button
+        id="runway-badge"
+        class="runway-badge"
+        aria-label="Configure runways"
+        aria-haspopup="dialog"
+      >
+        <span class="runway-symbol"></span
+        ><span id="runway-status">Available</span>
+      </button>
+      <div class="clock-group">
+        <span id="clock"></span><span id="simulation-status">RUNNING</span>
+      </div>
+      <div class="playback">
+        <button
+          id="pause"
+          class="icon-button"
+          title="Pause simulation (Space)"
+          aria-label="Pause simulation"
+        >
+          <i data-lucide="pause"></i>
+        </button>
+        <div class="speeds" aria-label="Simulation speed">
+          <button data-speed="1" class="active">1x</button
+          ><button data-speed="4">4x</button>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button
+          id="runway-config"
+          class="icon-button runway-config"
+          title="Configure runways"
+          aria-label="Configure runways"
+        >
+          <i data-lucide="sliders-horizontal"></i></button
+        ><button
+          id="shortcuts"
+          class="icon-button"
+          title="Keyboard shortcuts (?)"
+          aria-label="Keyboard shortcuts"
+        >
+          <i data-lucide="keyboard"></i></button
+        ><button
+          id="restart"
+          class="icon-button"
+          title="Delete saved game"
+          aria-label="Delete saved game"
+        >
+          <i data-lucide="trash-2"></i>
+        </button>
+      </div>
+    </header>
+    <div id="toast" role="status" hidden></div>
+    <dialog id="airport-dialog">
+      <form method="dialog">
+        <button
+          class="dialog-close icon-button"
+          aria-label="Close airport catalog"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </form>
+      <span class="eyebrow">AIRPORT CATALOG</span>
+      <h2>Select an airfield</h2>
+      <div id="airport-choices"></div>
+      <p class="catalog-note"></p>
+      <a download>Airport data</a>
+    </dialog>
+    <dialog id="restart-dialog" aria-labelledby="reset-heading">
+      <h2 id="reset-heading">Delete saved game?</h2>
+      <p id="reset-message">
+        Delete the current game and start over? Aircraft and scores will reset.
+      </p>
+      <div class="dialog-actions">
+        <button id="cancel-restart" class="secondary">Cancel</button
+        ><button id="confirm-restart" class="primary">
+          <i data-lucide="trash-2"></i>Delete and restart
+        </button>
+      </div>
+    </dialog>
+    <dialog id="runway-dialog" aria-labelledby="runway-heading">
+      <form method="dialog">
+        <button
+          class="dialog-close icon-button"
+          aria-label="Close runway configuration"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </form>
+      <span class="eyebrow">RUNWAY CONFIGURATION</span>
+      <h2 id="runway-heading">Plan runway use</h2>
+      <div id="runway-presets" class="runway-presets"></div>
+      <div id="runway-rows" class="runway-rows"></div>
+      <p id="runway-error" class="runway-error" hidden></p>
+      <div class="dialog-actions">
+        <button id="cancel-runways" class="secondary">Cancel</button
+        ><button id="apply-runways" class="primary">Apply configuration</button>
+      </div>
+    </dialog>
+    <dialog id="shortcuts-dialog">
+      <form method="dialog">
+        <button
+          class="dialog-close icon-button"
+          aria-label="Close keyboard shortcuts"
+        >
+          <i data-lucide="x"></i>
+        </button>
+      </form>
+      <h2>Keyboard shortcuts</h2>
+      <dl class="shortcut-list">
+        <div>
+          <dt>Pushback</dt>
+          <dd><kbd>P</kbd></dd>
+        </div>
+        <div>
+          <dt>Pushback direction</dt>
+          <dd><kbd>R</kbd></dd>
+        </div>
+        <div>
+          <dt>Plan taxi route</dt>
+          <dd><kbd>T</kbd></dd>
+        </div>
+        <div>
+          <dt>Issue taxi clearance</dt>
+          <dd><kbd>Enter</kbd></dd>
+        </div>
+        <div>
+          <dt>Hold / resume</dt>
+          <dd><kbd>H</kbd></dd>
+        </div>
+        <div>
+          <dt>Clear to land</dt>
+          <dd><kbd>L</kbd></dd>
+        </div>
+        <div>
+          <dt>Cross runway</dt>
+          <dd><kbd>K</kbd></dd>
+        </div>
+        <div>
+          <dt>Line up &amp; wait</dt>
+          <dd><kbd>U</kbd></dd>
+        </div>
+        <div>
+          <dt>Rolling departure</dt>
+          <dd><kbd>O</kbd></dd>
+        </div>
+        <div>
+          <dt>Clear for takeoff</dt>
+          <dd><kbd>D</kbd></dd>
+        </div>
+        <div>
+          <dt>Go around</dt>
+          <dd><kbd>G</kbd></dd>
+        </div>
+        <div>
+          <dt>Taxi to holding point</dt>
+          <dd><kbd>B</kbd></dd>
+        </div>
+        <div>
+          <dt>Hold short of point / taxiway</dt>
+          <dd><kbd>S</kbd></dd>
+        </div>
+        <div>
+          <dt>Follow aircraft</dt>
+          <dd><kbd>Y</kbd></dd>
+        </div>
+        <div>
+          <dt>Give way to aircraft</dt>
+          <dd><kbd>W</kbd></dd>
+        </div>
+        <div>
+          <dt>Continue past holding limit</dt>
+          <dd><kbd>C</kbd></dd>
+        </div>
+        <div>
+          <dt>Cancel traffic instruction</dt>
+          <dd><kbd>X</kbd></dd>
+        </div>
+        <div>
+          <dt>Next request</dt>
+          <dd><kbd>N</kbd></dd>
+        </div>
+        <div>
+          <dt>Pause / resume simulation</dt>
+          <dd><kbd>Space</kbd></dd>
+        </div>
+        <div>
+          <dt>Fit airport</dt>
+          <dd><kbd>F</kbd></dd>
+        </div>
+        <div>
+          <dt>Close menu / cancel route</dt>
+          <dd><kbd>Esc</kbd></dd>
+        </div>
+      </dl>
+    </dialog>
+    <script type="module" src="app.js"></script>
+  </body>
 </html>

@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "basis": "game-assumptions",
+  "departureWakeSeconds": {
+    "H": { "M": 90, "H": 60 },
+    "M": { "M": 0, "H": 0 }
+  },
+  "note": "Curated game limits on real OSM geometry, not verified Edinburgh stand or pavement restrictions. No operational use.",
+  "departureTypes": [
+    "AT72",
+    "DH8D",
+    "E190",
+    "A223",
+    "A320",
+    "A21N",
+    "B738",
+    "A320",
+    "A333",
+    "A359"
+  ],
+  "arrivalTypes": [
+    "A359",
+    "A333",
+    "A320",
+    "A21N",
+    "E190",
+    "A223",
+    "B738",
+    "DH8D",
+    "AT72",
+    "A320"
+  ],
+  "initialTypes": {},
+  "standGroups": [
+    { "stands": ["1", "15"], "maxLength": 68, "maxWingspan": 65 },
+    {
+      "stands": [
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7",
+        "8",
+        "9",
+        "10",
+        "11",
+        "12",
+        "14",
+        "16",
+        "17",
+        "18",
+        "19",
+        "20",
+        "21",
+        "22",
+        "23",
+        "24",
+        "25",
+        "26",
+        "27",
+        "28",
+        "29",
+        "30",
+        "31",
+        "32",
+        "33",
+        "34"
+      ],
+      "maxLength": 44,
+      "maxWingspan": 36
+    }
+  ],
+  "exclusionGroups": [
+    ["1", "2"],
+    ["5", "6"],
+    ["12", "14", "15"],
+    ["15", "16"],
+    ["17", "18"],
+    ["20", "21"],
+    ["21", "22"],
+    ["23", "24"]
+  ],
+  "defaultRouteTypes": [
+    "AT72",
+    "DH8D",
+    "E190",
+    "A223",
+    "A320",
+    "A21N",
+    "B738",
+    "A333",
+    "A359"
+  ],
+  "routeRules": [
+    {
+      "refs": ["G", "H", "Q"],
+      "allowedTypes": ["AT72", "DH8D", "E190", "A223", "A320", "A21N", "B738"]
+    }
+  ]
+}

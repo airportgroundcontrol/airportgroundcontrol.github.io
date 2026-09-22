@@ -50,6 +50,10 @@ try {
         "traffic-browser.mjs",
         "persistence-browser.mjs",
         "airports-browser.mjs",
+        "frankfurt-browser.mjs",
+        "aircraft-browser.mjs",
+        "aircraft-flow-browser.mjs",
+        "random-traffic-browser.mjs",
       ];
   for (const suite of suites) {
     console.log(`\nRunning ${suite} at ${baseURL}`);

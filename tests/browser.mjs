@@ -1,5 +1,6 @@
 import { baseURL, browserChannel, artifact } from "./browser-support.mjs";
 import { chromium } from "playwright";
+import { useScriptedTraffic } from "./scripted-browser.mjs";
 import assert from "node:assert/strict";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
@@ -21,8 +22,14 @@ try {
       },
     };
   });
+  await useScriptedTraffic(page.context());
   await page.goto(baseURL);
   await page.waitForFunction(() => window.groundControl);
+  assert.equal(await page.evaluate(() => groundControl.session.speed), 1);
+  assert.equal(
+    await page.locator('[data-speed="1"]').getAttribute("class"),
+    "active",
+  );
   await page.evaluate(() => {
     groundControl.setPaused(true);
     groundControl.sim.nextArrival = Infinity;
@@ -52,7 +59,7 @@ try {
   const clickAircraft = async (id, button = "left") => {
     const point = await page.evaluate(
       (id) =>
-        groundControl.map.screen(
+        groundControl.map.aircraftScreen(
           groundControl.sim.planes.find((p) => p.id === id),
         ),
       id,
@@ -86,11 +93,6 @@ try {
   await page.keyboard.press("p");
   assert.equal(await state(1), "pushback");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
-  await page.waitForFunction(
-    () =>
-      [...document.querySelectorAll("#strips .strip")].at(-1)?.dataset
-        .flight === "1",
-  );
   await page.keyboard.press("h");
   assert.equal(
     await page.evaluate(() => groundControl.sim.planes[0].held),
@@ -116,8 +118,14 @@ try {
   await advance(1, "holding");
   await page.keyboard.press("u");
   await advance(1, "linedup");
-  await page.getByRole("button", { name: "Select KLM927" }).click();
-  assert.equal(await menuAction("Clear to land").isDisabled(), true);
+  await page.evaluate(() => {
+    const s = groundControl.sim;
+    s.planes = s.planes.filter((p) => p.id !== 4);
+    s.nextId = 4;
+    s.spawnArrival("KLM927", "A333");
+  });
+  await clickAircraft(4);
+  assert.equal(await menuAction("Clear to land").isDisabled(), false);
   await page.keyboard.press("l");
   assert.equal(await state(4), "approach");
   assert.equal(
@@ -132,28 +140,27 @@ try {
     ),
     0,
   );
-  await page.getByRole("button", { name: "Select BAW1439" }).click();
+  await clickAircraft(1);
   await page.keyboard.press("d");
   await advance(1, "done");
-  await page.getByRole("button", { name: "Select KLM927" }).click();
+  await page.evaluate(() => {
+    const s = groundControl.sim;
+    s.planes = s.planes.filter((p) => p.id !== 4);
+    s.nextId = 4;
+    s.spawnArrival("KLM927", "A333");
+  });
+  await clickAircraft(4);
   await page.keyboard.press("l");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
   await advance(4, "inbound");
-  await page.getByRole("button", { name: "Select KLM927" }).click();
-  await page.getByLabel("DESTINATION STAND").selectOption("5");
+  await clickAircraft(4);
+  await page.getByLabel("DESTINATION STAND").selectOption("1");
   await page.getByLabel("DESTINATION STAND").focus();
-  const radioBeforeTyping = await page.evaluate(() =>
-    JSON.stringify(groundControl.sim.logs),
-  );
   await page.keyboard.press("l");
   assert.equal(
     await state(4),
     "inbound",
     "Shortcuts must not fire while a form field is focused",
-  );
-  assert.equal(
-    await page.evaluate(() => JSON.stringify(groundControl.sim.logs)),
-    radioBeforeTyping,
   );
   assert.equal(
     await page.evaluate(() => document.activeElement.id),
@@ -162,7 +169,7 @@ try {
   await page.locator("#map").focus();
   await page.keyboard.press("t");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
-  await page.getByRole("button", { name: "Select KLM927" }).click();
+  await clickAircraft(4);
   await menuAction("Issue taxi clearance").click();
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
   await advance(4, "parked");
@@ -198,9 +205,7 @@ try {
   assert.ok(
     (await page.evaluate(() => groundControl.map.camera.zoom)) > beforeZoom,
   );
-  await page.getByRole("button", { name: "Toggle flight panel" }).click();
-  assert.equal(await page.locator("#traffic-panel").isVisible(), false);
-  await page.getByRole("button", { name: "Toggle flight panel" }).click();
+  assert.equal(await page.locator("#traffic-panel").count(), 0);
   await page.getByRole("button", { name: "EGPH Edinburgh" }).click();
   assert.equal(await page.locator("#airport-dialog").isVisible(), true);
   await page.getByRole("button", { name: "Close airport catalog" }).click();
@@ -239,9 +244,11 @@ try {
     true,
   );
   await page
-    .getByRole("button", { name: "Restart simulation", exact: true })
+    .getByRole("button", { name: "Delete saved game", exact: true })
     .click();
-  await page.getByRole("button", { name: "Restart", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Delete and restart", exact: true })
+    .click();
   await page.evaluate(() => groundControl.setPaused(true));
 
   for (const viewport of [
@@ -284,20 +291,14 @@ try {
     });
     assert.equal(metrics.scheme, "dark");
     assert.ok(metrics.colors > 20);
-    const panel = await page.locator("#traffic-panel").boundingBox();
-    const topbar = await page.locator(".topbar").boundingBox();
-    assert.equal(panel.y, topbar.height);
-    assert.equal(panel.y + panel.height, viewport.height);
-    if (viewport.width <= 600) {
-      await page.getByRole("button", { name: "Toggle flight panel" }).click();
-      await page.getByRole("button", { name: "Fit airport" }).click();
-      await settled();
-    }
     await clickAircraft(1, "right");
     await settled();
     const box = await page.locator("#aircraft-menu").boundingBox();
     const header = await page.locator(".topbar").boundingBox();
-    assert.ok(box.width <= 240 && box.height < 80, "Pushback menu is compact");
+    assert.ok(
+      box.width <= 240 && box.height < 120,
+      "Two-action pushback menu is compact",
+    );
     assert.equal(
       await page
         .locator("#aircraft-menu h2, #aircraft-menu .plane-type")
@@ -306,7 +307,7 @@ try {
     );
     assert.equal(
       await page.locator("#aircraft-menu").innerText(),
-      "Approve pushback\nP",
+      "Approve pushback\nP\nPushback direction...\nR",
     );
     assert.ok(
       box.x >= 0 &&
@@ -319,8 +320,6 @@ try {
       path: artifact("dark-menu-" + viewport.width + ".png"),
     });
     await page.keyboard.press("Escape");
-    if (viewport.width <= 600)
-      await page.getByRole("button", { name: "Toggle flight panel" }).click();
   }
   await page.evaluate(() => {
     groundControl.sim.time = 1201;
@@ -334,13 +333,16 @@ try {
   await offline.context().setOffline(true);
   await offline.goto(pathToFileURL(path.resolve("Ground Control.html")).href);
   await offline.waitForFunction(() => window.groundControl);
-  assert.equal(
-    await offline.evaluate(() => groundControl.sim.planes.length),
-    4,
+  assert.ok(
+    await offline.evaluate(
+      () =>
+        groundControl.sim.planes.length >= 3 &&
+        groundControl.sim.planes.length <= 6,
+    ),
   );
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: aircraft click/right-click menus, all clearance shortcuts, form/modal guards, request sorting, runway protection, full flight cycles, endless play, full-screen dark map, five responsive viewports, offline game.",
+    "PASS: aircraft click/right-click menus, all clearance shortcuts, form/modal guards, request cycling, runway protection, full flight cycles, endless play, full-screen dark map, five responsive viewports, offline game.",
   );
 } finally {
   await browser.close();

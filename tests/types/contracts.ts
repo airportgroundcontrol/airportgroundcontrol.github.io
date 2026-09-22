@@ -7,7 +7,7 @@ import type {
   AircraftBase,
   AircraftState,
   TrafficOrder,
-  SavedSimulationV1,
+  SavedSimulationV2,
   SimulationState,
 } from "../../src/domain/contracts";
 import {
@@ -66,8 +66,8 @@ const order: TrafficOrder = {
   releaseAt: 2,
   merged: false,
 };
-// @ts-expect-error Live Sets cannot be written directly as a version-1 snapshot.
-const saved: SavedSimulationV1 = live;
+// @ts-expect-error Live Sets cannot be written directly as a version-2 snapshot.
+const saved: SavedSimulationV2 = live;
 // @ts-expect-error Geometry needs an actual route, not only a position.
 distanceAhead({ x: 0, y: 0 }, { x: 1, y: 1 });
 void [taxi, follow, wrongTarget, missingTarget, missingExit, end, order, saved];

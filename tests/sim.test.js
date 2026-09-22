@@ -7,7 +7,7 @@ import {
   orderedFlights,
   requestsAction,
 } from "../src/sim.js";
-import { defaultAirport as data } from "../src/airports/catalog.js";
+import { defaultAirport as data } from "./fixtures/standard-airport.js";
 function setup() {
   const sim = new GroundSim(data);
   sim.nextArrival = Infinity;
@@ -60,23 +60,24 @@ test("departure cycle follows the stand and taxiway network, stops at D1 and rel
   assert.equal(s.runwayOwner, null);
   assert.equal(s.completed, 1);
 });
-test("arrival cannot share runway; reservation lasts through runway exit", () => {
+test("arrival clearance reserves a future slot and occupancy lasts through runway exit", () => {
   const s = setup(),
     p = s.planes[3];
   assert.ok(s.command(p.id, "land").ok);
   s.spawnArrival("TEST2");
   assert.equal(s.command(s.planes.at(-1).id, "land").ok, false);
-  assert.equal(s.runwayOwner, p.id);
+  assert.equal(s.runwayOwner, null);
+  assert.equal(s.clearedArrivalForRunway(p).id, p.id);
   until(s, p.id, "inbound");
   assert.ok(s.runwayDistance(p) > 85);
   assert.equal(s.runwayOwner, null);
   assert.equal(s.command(p.id, "taxi", { stand: "3" }).ok, false);
-  assert.ok(s.command(p.id, "taxi", { stand: "14" }).ok);
+  assert.ok(s.command(p.id, "taxi", { stand: "1" }).ok);
   until(s, p.id, "parked");
-  assert.equal(p.node, s.stands.get("14").node);
+  assert.equal(p.node, s.stands.get("1").node);
   assert.equal(s.completed, 1);
 });
-test("hold freezes motion, resume continues without teleporting", () => {
+test("hold brakes smoothly, then stays stopped until resumed", () => {
   const s = setup(),
     p = s.planes[0];
   s.command(p.id, "pushback");
@@ -84,10 +85,14 @@ test("hold freezes motion, resume continues without teleporting", () => {
   s.command(p.id, "hold");
   const pos = { x: p.x, y: p.y };
   for (let i = 0; i < 50; i++) s.tick(0.1);
-  assert.equal(distance(pos, p), 0);
+  assert.ok(distance(pos, p) > 0 && distance(pos, p) < 3);
+  assert.equal(p.speed, 0);
+  const stopped = { x: p.x, y: p.y };
+  s.tick(0.1);
+  assert.equal(distance(stopped, p), 0);
   s.command(p.id, "hold");
   s.tick(0.1);
-  assert.ok(distance(pos, p) > 0 && distance(pos, p) < 1);
+  assert.ok(distance(stopped, p) > 0 && distance(stopped, p) < 1);
 });
 test("taxi preview goes through requested waypoints and invalid clearances preserve state", () => {
   const s = setup(),
@@ -132,7 +137,7 @@ test("simulation continues beyond 20 minutes and throughout a four-hour session"
   for (let i = 0; i < 57601; i++) s.tick(0.25);
   assert.ok(s.time > 14400);
   assert.ok(s.planes.length <= 24);
-  assert.ok(s.logs.length <= 40);
+  assert.equal("logs" in s, false);
   const active = s.planes.filter((p) => p.state !== "done");
   assert.equal(new Set(active.map((p) => p.call)).size, active.length);
   assert.ok(s.command(1, "pushback").ok);

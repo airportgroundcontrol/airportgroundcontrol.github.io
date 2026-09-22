@@ -12,32 +12,22 @@ const manifest = JSON.parse(
 const hash = (value) => createHash("sha256").update(value).digest("hex");
 
 for (const fixture of manifest.fixtures)
-  test(`archived v1: ${fixture.name} restores and continues unchanged`, () => {
+  test(`archived v1: ${fixture.name} is rejected intact without legacy migration`, () => {
     const raw = fs.readFileSync(
       new URL(fixture.name + ".json", directory),
       "utf8",
     );
     assert.equal(hash(raw), fixture.sha256, "Fixture bytes changed");
-    const saved = JSON.parse(raw);
     const sim = new GroundSim(data);
+    const before = JSON.stringify(captureSimulation(sim));
     const entries = new Map([["ground-control:save:EGPH", raw]]);
     const storage = new GameStorage(data, () => ({
       getItem: (key) => entries.get(key),
       setItem: (key, value) => entries.set(key, value),
     }));
     const result = storage.load(sim);
-    assert.equal(result.status, "restored");
-    assert.deepEqual(
-      JSON.parse(JSON.stringify(captureSimulation(sim))),
-      saved.simulation,
-    );
-    for (const [key, value] of Object.entries(saved.ui))
-      assert.deepEqual(result.ui[key], value);
-    for (let tick = 0; tick < manifest.continuationTicks; tick++)
-      sim.tick(manifest.stepSeconds);
-    assert.equal(
-      hash(JSON.stringify(captureSimulation(sim))),
-      fixture.continuedSha256,
-      "Simulation continuation changed",
-    );
+    assert.equal(result.status, "invalid");
+    assert.equal(JSON.stringify(captureSimulation(sim)), before);
+    assert.equal(storage.save(sim, {}), false);
+    assert.equal(entries.get(storage.key), raw);
   });
