@@ -1,5 +1,7 @@
 # Airport Ground Control Free
 
+![How to play Airport Ground Control](media/how-to-play.png)
+
 Ground Control is a browser-based airport surface-control game. Direct aircraft between stands, taxiways and runways while keeping traffic moving safely.
 
 The airport maps use real-world geometry. Aircraft follow the mapped taxiway network, use compatible stands and behave differently according to their size and performance. The traffic, weather and operating scenarios are simulated.

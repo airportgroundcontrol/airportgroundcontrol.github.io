@@ -40,5 +40,6 @@ const standalone = html
     () =>
       `<script>${fs.readFileSync("dist/app.js", "utf8").replaceAll("</script", "<\\/script")}</script>`,
   );
-fs.writeFileSync("Ground Control.html", standalone);
-console.log("Built static app and standalone offline game.");
+for (const name of ["Ground Control.html", "index.html"])
+  fs.writeFileSync(name, standalone);
+console.log("Built static app and standalone offline entry files.");

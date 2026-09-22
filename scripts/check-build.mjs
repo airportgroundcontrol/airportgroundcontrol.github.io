@@ -14,15 +14,17 @@ for (const entry of fs.readdirSync(
       read(`data/airports/${entry.name}/geometry.json`),
     );
 }
-const offline = read("Ground Control.html");
-assert.ok(offline.includes(`<style>${read("web/style.css")}</style>`));
-assert.ok(
-  offline.includes(
-    `<script>${read("dist/app.js").replaceAll("</script", "<\\/script")}</script>`,
-  ),
-);
-assert.ok(!offline.includes('<script type="module" src="app.js">'));
-assert.ok(!offline.includes('<link rel="stylesheet" href="style.css">'));
+for (const name of ["Ground Control.html", "index.html"]) {
+  const offline = read(name);
+  assert.ok(offline.includes(`<style>${read("web/style.css")}</style>`));
+  assert.ok(
+    offline.includes(
+      `<script>${read("dist/app.js").replaceAll("</script", "<\\/script")}</script>`,
+    ),
+  );
+  assert.ok(!offline.includes('<script type="module" src="app.js">'));
+  assert.ok(!offline.includes('<link rel="stylesheet" href="style.css">'));
+}
 console.log(
   "Static filenames, source copies and offline embedded assets verified.",
 );
