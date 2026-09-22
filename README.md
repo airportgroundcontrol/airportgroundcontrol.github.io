@@ -1,4 +1,4 @@
-# Ground Control
+# Airport Ground Control Free
 
 Ground Control is a browser-based airport surface-control game. Direct aircraft between stands, taxiways and runways while keeping traffic moving safely.
 
