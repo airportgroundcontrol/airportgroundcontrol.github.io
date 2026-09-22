@@ -85,7 +85,7 @@ try {
     const plane = groundControl.sim.planes.find(
       (candidate) => candidate.id === id,
     );
-    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.19 };
+    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.266 };
     groundControl.select(id);
   }, gateId);
   const selectAircraft = await capture("01-select-aircraft");
@@ -95,7 +95,7 @@ try {
     const plane = sim.planes.find((candidate) => candidate.id === id);
     if (plane.state === "gate") sim.command(id, "pushback");
     for (let i = 0; i < 4000 && plane.state !== "ready"; i++) sim.tick(0.1);
-    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.28 };
+    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.392 };
     groundControl.select(id);
     groundControl.preview();
   }, gateId);
@@ -116,7 +116,7 @@ try {
     for (let i = 0; i < 4000 && plane.state !== "linedup"; i++) sim.tick(0.1);
     if (plane.state !== "linedup")
       throw new Error("Departure did not line up.");
-    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.48 };
+    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.672 };
     groundControl.select(id);
   }, gateId);
   const takeoff = await capture("03-clear-for-takeoff");
@@ -135,7 +135,7 @@ try {
     groundControl.map.camera = {
       x: (plane.x + threshold.x) / 2,
       y: (plane.y + threshold.y) / 2,
-      zoom: 0.18,
+      zoom: 0.252,
     };
     groundControl.select(id);
   }, arrivalId);
@@ -162,7 +162,7 @@ try {
     for (let i = 0; i < 16000 && plane.state !== "inbound"; i++) sim.tick(0.1);
     if (plane.state !== "inbound")
       throw new Error("Arrival did not vacate the runway.");
-    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.35 };
+    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.49 };
     groundControl.select(id);
     groundControl.preview();
   }, arrivalId);
@@ -201,7 +201,7 @@ try {
     groundControl.map.camera = {
       x: selected.x,
       y: selected.y,
-      zoom: 0.14,
+      zoom: 0.196,
     };
     groundControl.select(selected.id);
   }, arrivalId);
