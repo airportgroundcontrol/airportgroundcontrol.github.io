@@ -31,6 +31,14 @@ try {
     groundControl.sim.nextArrival = Infinity;
     groundControl.sim.nextDeparture = Infinity;
     groundControl.map.fit();
+    for (const selector of [
+      ".topbar",
+      ".map-heading",
+      ".map-controls",
+      ".map-footer",
+      ".compass",
+    ])
+      document.querySelector(selector).style.visibility = "hidden";
   });
 
   const settle = async () => {
@@ -52,7 +60,11 @@ try {
     });
     await settle();
     const file = path.join(captures, name + ".png");
-    await page.screenshot({ path: file, animations: "disabled" });
+    await page.screenshot({
+      path: file,
+      animations: "disabled",
+      clip: { x: 0, y: 68, width: 1100, height: 652 },
+    });
     return file;
   };
   const firstPlane = (predicate) => page.evaluate(predicate);
@@ -116,10 +128,15 @@ try {
   });
   if (!arrivalId) throw new Error("The guide needs an approaching aircraft.");
   await page.evaluate((id) => {
-    const plane = groundControl.sim.planes.find(
-      (candidate) => candidate.id === id,
-    );
-    groundControl.map.camera = { x: plane.x, y: plane.y, zoom: 0.18 };
+    const sim = groundControl.sim;
+    const plane = sim.planes.find((candidate) => candidate.id === id);
+    for (let i = 0; i < 10000 && sim.arrivalETA(plane) > 70; i++) sim.tick(0.1);
+    const threshold = sim.runwayFor(plane).start;
+    groundControl.map.camera = {
+      x: (plane.x + threshold.x) / 2,
+      y: (plane.y + threshold.y) / 2,
+      zoom: 0.16,
+    };
     groundControl.select(id);
   }, arrivalId);
   const landing = await capture("04-coordinate-landing");
@@ -193,44 +210,32 @@ try {
 
   const panels = [
     {
-      number: "01",
       title: "SELECT & PUSH BACK",
-      copy: "Select a stand aircraft and approve pushback when the path is clear.",
       image: selectAircraft,
       position: "center center",
     },
     {
-      number: "02",
       title: "PLAN TAXI",
-      copy: "Choose a runway, add taxiway points, and issue the route.",
       image: taxi,
       position: "center center",
     },
     {
-      number: "03",
       title: "CLEAR FOR TAKEOFF",
-      copy: "At the runway, line up and clear the aircraft for departure.",
       image: takeoff,
       position: "center center",
     },
     {
-      number: "04",
       title: "COORDINATE LANDING",
-      copy: "Assign a runway and exit before the arrival reaches decision time.",
       image: landing,
       position: "center center",
     },
     {
-      number: "05",
       title: "TAXI TO STAND",
-      copy: "After vacating, choose a compatible stand and plan the route.",
       image: taxiToStand,
       position: "center center",
     },
     {
-      number: "06",
       title: "KEEP TRAFFIC MOVING",
-      copy: "Watch every movement; the selected aircraft path is highlighted.",
       image: traffic,
       position: "center center",
     },
@@ -240,22 +245,20 @@ try {
     `data:image/png;base64,${fs.readFileSync(file).toString("base64")}`;
   const cards = panels
     .map(
-      ({ number, title, copy, image, position }) => `
+      ({ title, image, position }) => `
         <article class="card">
           <div class="shot">
             <img src="${dataImage(image)}" style="object-position:${position}" />
-            <span class="step">${number}</span>
           </div>
           <div class="caption">
             <h2>${title}</h2>
-            <p>${copy}</p>
           </div>
         </article>`,
     )
     .join("");
 
   const artwork = await browser.newPage({
-    viewport: { width: 1920, height: 1080 },
+    viewport: { width: 1920, height: 1800 },
     deviceScaleFactor: 1,
   });
   await artwork.setContent(`<!doctype html>
@@ -264,7 +267,7 @@ try {
         <meta charset="utf-8" />
         <style>
           * { box-sizing: border-box; }
-          html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; }
+          html, body { width: 1920px; height: 1800px; margin: 0; overflow: hidden; }
           body {
             background: #111315;
             color: #f4f5f6;
@@ -281,10 +284,10 @@ try {
           header p { margin: 6px 0 0; color: #aeb4ba; font-size: 17px; letter-spacing: 0; }
           .brand { color: #f1d47a; font-size: 16px; font-weight: 800; letter-spacing: 0; padding-top: 7px; }
           main {
-            height: 932px;
+            height: 1652px;
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(2, 1fr);
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(3, 1fr);
             gap: 18px;
           }
           .card {
@@ -297,31 +300,15 @@ try {
           }
           .shot { position: absolute; inset: 0; overflow: hidden; background: #0d0f11; }
           img { width: 100%; height: 100%; display: block; object-fit: cover; }
-          .step {
-            position: absolute;
-            top: 12px;
-            left: 12px;
-            width: 44px;
-            height: 30px;
-            display: grid;
-            place-items: center;
-            background: #f1d47a;
-            color: #151719;
-            border-radius: 4px;
-            font-size: 15px;
-            font-weight: 900;
-            box-shadow: 0 3px 14px #0009;
-          }
           .caption {
             position: absolute;
             inset: auto 0 0;
-            min-height: 88px;
-            padding: 14px 17px 13px;
+            min-height: 60px;
+            padding: 19px 20px 17px;
             background: rgba(24, 27, 30, .96);
             border-top: 1px solid #3b4147;
           }
-          h2 { margin: 0 0 6px; color: #f4f5f6; font-size: 19px; line-height: 1; letter-spacing: 0; }
-          .caption p { margin: 0; color: #c4c8cc; font-size: 14px; line-height: 1.3; letter-spacing: 0; }
+          h2 { margin: 0; color: #f4f5f6; font-size: 22px; line-height: 1; letter-spacing: 0; }
         </style>
       </head>
       <body>
