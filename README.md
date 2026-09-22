@@ -1,102 +1,173 @@
 # Ground Control
 
-A browser-only airport ground-control game with a data-driven airport engine. Edinburgh and Frankfurt use real OpenStreetMap airport geometry and run entirely offline.
+Ground Control is a browser-based airport surface-control game. Direct aircraft between stands, taxiways and runways while keeping traffic moving safely.
 
-Continuing from another account or a fresh task? Start with [CONTINUE_HERE.md](CONTINUE_HERE.md). Planned architecture and feature work lives in [ROADMAP.md](ROADMAP.md); [AGENTS.md](AGENTS.md) preserves project instructions for coding agents.
+The airport maps use real-world geometry. Aircraft follow the mapped taxiway network, use compatible stands and behave differently according to their size and performance. The traffic, weather and operating scenarios are simulated.
 
-The [architecture implementation plan](ARCHITECTURE_PLAN.md) records the completed first foundation package and the remaining phases, dependencies, save migrations and completion checks.
+## Start Playing
 
-Open **Ground Control.html** directly in a browser. The map, icons, pathfinding and simulation are bundled; the game works without a server or internet connection. The `dist` folder is the equivalent static website.
+Open **Ground Control.html** in a browser. The game is fully self-contained and does not require an internet connection or account.
 
-Development is local-only. Do not publish or upload the project unless explicitly requested. Removal of the previously hosted version was requested on 2026-09-20 but remains pending because the current account cannot access that site; see `CONTINUE_HERE.md`.
+Choose an airport from the selector in the top bar:
 
-## Play
+- **EGPH / Edinburgh** - a compact airport with one physical runway and 33 playable stands.
+- **EDDF / Frankfurt** - a large airport with four physical runways, multiple operating configurations and 53 playable stands.
 
-- Play continuously with recurring arrivals and aircraft rotations. There is no timer, movement target, or session end. A completed departure or arrival scores 100 points.
-- Each new game starts with a randomized airport-specific mix of departures and arrivals, weighted aircraft types and compatible departure stands. That opening roster is the only traffic created directly at gates: after play begins, new aircraft enter only as arrivals and become departures after parking and completing their turnaround. Capacity, adjacent-stand reservations and route restrictions still apply. Reload continues the saved sequence; the trash button starts a newly seeded game.
-- Click or right-click an aircraft on the map to open its action menu. Aircraft that need attention gently pulse; reduced-motion preferences disable the animation. Successful commands close the menu, and **N** selects the next request.
-- Departures: approve pushback, choose an active departure runway, plan the taxi route to its holding point, issue clearance, line up, then clear for takeoff.
-- Arrivals: choose an active runway parallel to the established approach, select a suitable exit, clear to land, wait for the aircraft to vacate, assign a free stand, then plan and issue taxi clearance.
-- Runways: select the runway indicator in the top bar. Choose an airport preset or assign each supported end to arrivals, departures, mixed use or closed. Existing approaches and runway-bound taxi traffic finish on their assigned runway while new traffic follows the new configuration.
-- Click taxiway points while planning to add intermediate waypoints. The proposed route appears on the map before clearance.
-- Hold position brakes a moving aircraft to a stop; its taxi route can be revised only once it is stationary. Continue resumes the previous route.
-- Taxi to holding point selects a named, mapped point (for example A15). The aircraft stops there and requests a new taxi clearance. Departure runway entry is available only at the airport's configured departure hold, such as D1 at Edinburgh or L3 at Frankfurt.
-- Hold short of selects an upcoming mapped holding point or taxiway transition along the cleared route. At taxiway transitions the game stops the aircraft 60 metres along the route before the junction. It retains the remaining route and waits for Continue taxi; it does not automatically cross the clearance limit.
-- Follow selects an aircraft sharing a forward taxi segment. Give way selects traffic whose cleared route intersects yours. Aircraft wait before the merge/crossing until that aircraft has passed and cleared, then resume automatically. Following and ordinary queues maintain length-dependent spacing; normal yielding costs no points. Incompatible and circular traffic instructions are rejected. Cancel traffic instruction removes the conditional order, but never overrides spacing, a manual hold or a holding limit.
-- Drag to pan, scroll or pinch to zoom, and use the fit button to restore the overview. Space pauses; 1x / 4x controls simulation speed.
-- Shortcuts for the selected aircraft: P pushback; T plan taxi; Enter issue taxi clearance; H hold/resume; L land; U line up; D take off; O rolling departure; G go around. N selects the next request, F fits the airport, and Escape dismisses the menu and cancels the route preview. The keyboard button or ? opens the reference. Shortcuts respect current clearance rules and do not fire while typing in a form or while a dialog is open.
-- Additional shortcuts: B taxi to holding point; S hold short; Y follow; W give way; C continue past a holding limit; X cancel traffic instruction. Choose a target in the picker, then confirm. Enter confirms the picker when its menu is focused; select fields retain their native keyboard behavior.
-- The map fills the entire screen. Movement, score, conflict, runway and playback controls stay in the top bar; aircraft are managed directly on the map.
-- Unresolved ground conflicts cost 20 points. Normal spacing, right-of-way yielding and instructed holds do not. Arrivals move continuously, with a base ETA of six simulation minutes varied by up to 15%, extended when needed to keep at least two minutes behind the preceding approach. ETA is shown on their cards. An uncleared arrival goes around at 8 seconds to threshold and costs 25 points once; a cleared arrival whose anticipated separation is lost also incurs the conflict penalty. It flies out of the control area without movement credit. Turnaround time is sampled once when parking around a 45-minute narrow-body baseline, varied by up to 15% and scaled by aircraft class (about 31.5 minutes for a turboprop, 38 minutes for a regional jet and 72 minutes for a widebody before jitter). The remaining time appears in the aircraft card and action popup.
+The simulation starts at **1x** speed. Use the controls in the top bar to pause or switch to **4x**.
 
-## MVP Scope
+## Objective
 
-Directional pushback is available with **R** at configured stands (currently 1, 3, 8 and 20); **P** retains the straight-back option. The picker previews the maneuver. Pushback routes stay protected through tug release. Self-maneuvering requires an explicit compatible stand/type configuration and is not enabled at Edinburgh without verified data.
+Manage aircraft from arrival to departure for as long as possible:
 
-Landing clearance offers only active parallel runways and exits within the aircraft's simplified braking capability. Edinburgh has midfield and runway-end-A paths; the A330 uses the later exit. Crews slow before turning off and retain physical runway occupancy until fully clear. Approaches fly continuously, including before clearance. Off-map chevrons show incoming flights and their ETA. A cleared approach reserves a future threshold slot, so a projected departure can use the runway first when performance and wake buffers fit. Holding departures can line up and take off in that gap or use Rolling departure (O) to enter and accelerate without stopping. Forecasts are monitored until touchdown; lost separation triggers an automatic go-around and controller penalty. These are simplified game rules, not operational ATC procedures.
+- Keep runways and taxiways moving efficiently.
+- Prevent aircraft conflicts and blocked routes.
+- Assign suitable runways, exits and stands.
+- Respect aircraft size, braking performance and wake separation.
+- Complete movements to increase your score.
 
-The mixed fleet includes the ATR 72-600, Dash 8-400, E190, A220-300, A320, A321neo, 737-800, A330-300, A350-900, 777-300ER and 747-8, each with original dimension-aware map artwork and a callsign/type label beside its symbol. Types have game-tuned acceleration, braking, corner speeds, pushback/tug timing and turnaround duration. Stand assignment and A\* routes enforce type limits and adjacent-stand reservations; a widebody cannot use a small stand. Airport fleet and stand limits are **game assumptions**, not verified operating restrictions. Aircraft dimensions use the manufacturer sources recorded in `src/aircraft/catalog.js`.
+There is no shift timer or final level. Traffic continues as long as you keep playing.
 
-Queues use aircraft lengths and crossing buffers account for dimensions. Holding destinations keep the nose before the limit. Runway vacate endpoints clear a conservative aircraft-sized envelope. Simplified departure-wake delays and anticipated-runway buffers account for heavy aircraft. Gear/minimum-radius feasibility, swept-area collision checks, jet blast, certified arrival wake separation and runway-length/weight/weather calculations remain future work.
+## Basic Controls
 
-Two airports are available in the catalog. EGPH / Edinburgh has 33 playable terminal stands and a runway 24 scenario. EDDF / Frankfurt has 53 curated terminal, cargo and remote positions on a 7,424-node ground graph and all four physical runways. Its west/east flow and reduced-operation presets use both directions of the parallel system plus departure-only runway 18; custom roles remain constrained by airport capabilities. Frankfurt's early and late runway exits make aircraft braking performance operationally relevant.
+- **Click or right-click an aircraft** to open its available actions.
+- **Drag the map** to pan and use the mouse wheel or pinch gesture to zoom.
+- **Click taxiway points** while planning a route to add intermediate waypoints.
+- Press **N** to jump to the next aircraft requesting attention.
+- Press **Space** to pause or resume.
+- Press **F** to fit the entire airport in view.
+- Press **Esc** to close a menu or cancel an unfinished route.
 
-The geometry is real; traffic, wind and schedules are simulated. Stand eligibility, aircraft dimensions, taxi speeds, ground separation and turnaround timing are simplified. Aircraft use cubic paths within a small configured centerline corridor, with low-speed parking and gradual manual stopping. This constrains their reference point, not their swept wings or landing gear; it is not full steering or towing physics. Runway occupancy is enforced, with explicit line-up and takeoff clearance. Crossing traffic uses basic give-way-to-the-right logic; head-on blockages still need controller intervention. Conditional traffic clearances use route intersections and a fixed clearance buffer, not certified wingspan/wake separation or complete local procedures. There are no simulated stop-bar lights, live traffic, real weather, multiplayer, service vehicles or full ATC phraseology. This is a game, not an operational airport tool.
+Actions that are not currently safe or valid are unavailable. Successful clearances automatically close the aircraft menu.
 
-For continuous sessions, departed aircraft and their conflict records are retired after handoff, while cumulative scores remain. Automatic arrivals pause when the active flight count reaches 24 and resume as space becomes available. No recurring departure generator creates aircraft at empty gates; every post-start departure is a prior arrival. Active callsigns stay distinct.
+## Departures
+
+1. Select an aircraft at a stand and approve pushback.
+2. Choose a pushback direction where multiple options are available.
+3. Wait for pushback and tug disconnection to finish.
+4. Open the aircraft again and choose **Plan taxi route**.
+5. Select the departure runway and add any desired taxiway waypoints.
+6. Issue the taxi clearance and monitor other ground traffic.
+7. At the runway holding point, issue **Line up & wait** or a **Rolling departure**.
+8. Clear the aircraft for takeoff when runway separation permits.
+
+A rolling departure enters the runway and accelerates without stopping. It is available only when projected runway separation remains safe.
+
+## Arrivals
+
+Incoming aircraft appear at the edge of the map with an ETA. Once landing clearance is issued, a blue badge shows the runway you assigned, such as **RWY 25L**.
+
+1. Select the incoming aircraft.
+2. Choose an active arrival runway parallel to its approach.
+3. Select a runway exit suitable for the aircraft's braking performance.
+4. Issue landing clearance when the runway is available or projected to become clear in time.
+5. After landing, wait for the aircraft to vacate the runway.
+6. Assign a compatible free stand.
+7. Plan and issue its taxi route to the stand.
+
+Aircraft continue toward the runway even without clearance. If an aircraft reaches the decision point without landing clearance, it automatically goes around and costs points. A cleared aircraft also goes around if projected runway separation is lost.
+
+After parking, an aircraft completes a realistically scaled turnaround. It can later request pushback and continue as a departure; new aircraft do not simply appear at empty stands during play.
+
+## Runway Planning
+
+Open the runway control in the top bar to choose an airport preset or configure individual runway ends.
+
+Depending on airport capabilities, a runway end can be assigned to:
+
+- Arrivals
+- Departures
+- Mixed use
+- Closed
+
+Aircraft already committed to an approach or runway route keep their assignment during a configuration change. New traffic follows the new runway plan.
+
+## Taxi and Traffic Control
+
+Aircraft move only along the airport's connected ground network. You can add taxiway points to create the route you want before issuing clearance.
+
+Additional traffic instructions include:
+
+- **Hold position** - brakes the aircraft to a stop.
+- **Continue taxi** - releases a manual hold or clearance limit.
+- **Taxi to holding point** - sends the aircraft to a named intermediate point.
+- **Hold short of** - creates a temporary clearance limit along its current route.
+- **Follow** - queues behind another aircraft using a shared route.
+- **Give way** - waits for intersecting traffic to pass.
+- **Cross runway** - clears a configured runway crossing when safe.
+
+Aircraft automatically maintain basic spacing and yield to traffic from the right at ordinary intersections. Difficult head-on situations or incompatible routes still require controller action.
+
+## Map Indicators
+
+Aircraft colors show their current movement state:
+
+- **White** - at a stand
+- **Brown** - pushing back
+- **Yellow** - taxiing or waiting on the ground
+- **Blue** - approaching or landing
+- **Green** - taking off
+
+An aircraft that needs a controller action pulses gently. Labels show the callsign and aircraft type. Incoming aircraft show their ETA; after landing clearance, they also show the assigned-runway badge.
+
+## Scoring
+
+- A completed arrival or departure earns **100 points**.
+- An unresolved ground conflict costs **20 points**.
+- An automatic go-around caused by missing clearance costs **25 points**.
+- Normal queue spacing, automatic yielding and instructed holds do not cost points.
+
+The top bar displays completed movements, score and conflicts.
+
+## Keyboard Shortcuts
+
+| Action | Key |
+| --- | --- |
+| Approve pushback | **P** |
+| Choose pushback direction | **R** |
+| Plan taxi route | **T** |
+| Issue taxi clearance | **Enter** |
+| Hold or resume | **H** |
+| Clear to land | **L** |
+| Go around | **G** |
+| Cross runway | **K** |
+| Line up and wait | **U** |
+| Rolling departure | **O** |
+| Clear for takeoff | **D** |
+| Taxi to holding point | **B** |
+| Hold short | **S** |
+| Follow aircraft | **Y** |
+| Give way | **W** |
+| Continue past holding limit | **C** |
+| Cancel traffic instruction | **X** |
+| Next request | **N** |
+| Pause or resume | **Space** |
+| Fit airport | **F** |
+| Close menu or cancel route | **Esc** |
+
+The keyboard button in the top bar opens this reference inside the game.
+
+## Aircraft
+
+The fleet includes:
+
+- ATR 72-600
+- Dash 8-400
+- Embraer E190
+- Airbus A220-300, A320, A321neo, A330-300 and A350-900
+- Boeing 737-800, 777-300ER and 747-8
+
+Aircraft differ in dimensions, acceleration, braking, cornering, wake category, turnaround duration and stand compatibility. Large aircraft need suitable gates and may require later runway exits.
 
 ## Saved Games
 
-The rotation-traffic update keeps compatible format-2 seeded games playable without migration. Existing aircraft and sampled turnaround times remain exactly as saved; future arrivals use the longer planning window and future parking events use the longer turnaround rules. Truly incompatible or pre-format-2 saves still require deletion with the top-bar trash button. Current saves preserve the random seed and generator position, sampled turnaround duration, curve progress, braking, directional pushback, selected landing exit, moving approaches and go-arounds. Reload never rerolls future traffic.
+The game automatically saves progress in the current browser. Reloading restores aircraft positions, routes, clearances, runway configuration, score, map position, pause state and simulation speed.
 
-The game automatically saves locally in this browser, once per second, after commands and UI interactions, and when the page is hidden or closed. Reloading or reopening the same site restores aircraft, routes, per-aircraft runway choices, clearances, holding limits, traffic instructions, runway occupancy, active runway configuration/changeover, scheduling timers and scores. It also restores selection, 1x/4x speed, pause state, map labels, pan/zoom and an unissued route draft. Radio history is neither retained nor persisted. Popups and dialogs reopen closed. Time does not advance while the game is closed. The top-bar trash button deletes the current state and immediately saves a newly randomized game.
+The trash button in the top bar deletes the current airport's save and starts a new randomized game at **1x** speed.
 
-Storage uses one format-2 `localStorage` snapshot per airport. The immutable graph is not saved. Loading validates simulation state, aircraft types, stand reservations, geometry and aircraft/operational/scenario compatibility. **No legacy support:** v1 saves are rejected, not migrated, by user request. If a snapshot is invalid or incompatible, simulation and commands stay paused behind the delete confirmation until the user explicitly resets it. The replacement must be written successfully before play is unlocked. There is no game export/import or previous-save UI.
+Saves belong to the browser profile and page address where they were created. Clearing browser data or using private browsing may remove them. Game time does not advance while the page is closed.
 
-Saves belong to the current browser profile and site address, not an account. There is no cloud sync or manual transfer. Clearing site data removes them; private browsing may discard them on exit. The offline HTML has a separate save, whose availability depends on the browser's local-file storage policy. Browser Web Locks allow one writer per airport; a second tab cannot start that airport until the first closes. Where Web Locks or storage are unavailable, play is volatile. Time advances in 0.05-second simulation steps at 1x/4x; hidden tabs do not simulate or catch up.
+## Simulation Scope
 
-## Architecture
+Ground Control is a game, not an operational aviation tool. Airport geometry is based on real map data, but traffic, schedules, weather, stand restrictions and operating procedures are simplified for gameplay. It does not reproduce certified airport procedures or provide real-world ATC guidance.
 
-This is a static, client-only JavaScript application with no runtime backend or framework. The modules have separate responsibilities:
-
-| Module                          | Responsibility                                                                                                                                                                |
-| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `src/sim.js`                    | Aircraft state transitions, clearance validation, spawning, scoring, runway ownership and indexed/cached graph routing. No DOM or storage access.                             |
-| `src/traffic.js`                | Pure route geometry for spacing, merges, crossings and conditional traffic clearances.                                                                                        |
-| `src/map.js`                    | Layer-cached canvas renderer, map camera, aircraft/waypoint hit testing, pan/zoom and input callbacks.                                                                         |
-| `src/app.js`                    | Menus, flight groups, keyboard shortcuts, UI state, simulation loop and coordination.                                                                                         |
-| `src/session/game-session.js`   | Owns simulation, command dispatch/results, pacing, restore/autosave, restart and disposal. UI and integration commands share this entry point.                                |
-| `src/session/random.js`         | Nonzero 32-bit seed generation and deterministic PRNG transition. The engine owns the saved seed/state; the session supplies fresh entropy only when initializing/restarting. |
-| `src/airports/package.js`       | Validates/freezes airport geometry, operations and scenario data and creates the engine-facing view.                                                                          |
-| `src/airports/catalog.js`       | Explicit bundled airport registry and the only runtime module importing airport-specific files.                                                                               |
-| `src/ui/airport.js`             | Airport-derived header, catalog, weather and attribution metadata.                                                                                                             |
-| `src/persistence.js`            | Automatic local snapshots, validation, reload restore and explicit reset.                                                                                                     |
-| `data/airports/*/geometry.json` | Curated airport geometry and routing networks, copied to static `dist/data/` files.                                                                                           |
-| `web/`                          | Authored static HTML and CSS.                                                                                                                                                 |
-| `src/domain/contracts.ts`       | State/command/session-result and geometry/operations/scenario/save contracts.                                                                                                 |
-| `scripts/import-airport.mjs`    | Offline OpenStreetMap ingestion; no map API is required during gameplay.                                                                                                      |
-| `scripts/build.mjs`             | esbuild bundle plus the standalone offline HTML.                                                                                                                              |
-
-Flow: mouse/keyboard input -> validated simulation command -> time-step updates -> Canvas/DOM rendering and periodic snapshots. Routing uses A\* through ngraph.graph/ngraph.path; icons use Lucide. Tests exercise the simulation without a browser and actual gameplay with Playwright.
-
-`GameSession` owns commands, fixed-step pacing and automatic persistence. Geometry, operations, fleet limits and scenarios are separate package inputs; shared code has no airport-specific operating assumptions. Airport packages declare runway-end capabilities and scenario presets; `GroundSim` owns the mutable active configuration and transition state. `src/aircraft/` owns catalog, compatibility, movement helpers and silhouettes. `src/session/writer-lease.js` owns browser writer locks. Edinburgh geometry bytes remain unchanged, but save behavior intentionally changed to format 2 without legacy support. Strict type checking covers contracts, traffic geometry and compile-time tests, not the entire engine/UI. Swept-area turns, intersecting-runway dependencies and detailed aircraft/runway performance remain future work.
-
-## Data
-
-Aircraft map artwork is original to this project, defined as local vector paths in `src/aircraft/render.js`. No Flightradar24 icons, sprite sheets or other third-party aircraft artwork are included. Each of the eleven types has its own silhouette; display scaling does not change simulation dimensions or saved games.
-
-Map data: [OpenStreetMap contributors](https://www.openstreetmap.org/copyright), downloaded 2026-09-20 from the [OSM map API](https://api.openstreetmap.org/api/0.6/map?bbox=-3.405,55.930,-3.332,55.969). The derived airport database is provided in `dist/data/egph.json` under the [Open Database License 1.0](https://opendatacommons.org/licenses/odbl/1-0/). Coordinates are a local equirectangular projection in metres around 55.95 N, 3.372 W. No map tiles or third-party services are requested at runtime.
-
-Frankfurt geometry was downloaded 2026-09-21 from the [OSM airport relation](https://www.openstreetmap.org/relation/5813621), normalized into a local metre projection, and curated to connected playable stands. It is bundled under the same ODbL terms; gameplay makes no network requests.
-
-Airport ingestion now requires explicit metadata and operational connections: `node scripts/import-airport.mjs /path/to/source.osm data/airports/egph/import.json /path/to/new-candidate.json`. It validates a candidate without overwriting existing files or guessing runway exits. The original Edinburgh data reimports byte-for-byte unchanged. See [Airport Packages](data/airports/README.md) for configuration, validation, provenance and save compatibility. Named holding points are instructed clearance limits; aircraft do not stop at every mapped point automatically. Simulated operations are not a reproduction of certified local procedures.
-
-## Development
-
-Use Node 22+ and `npm ci`, then `npm run verify`. Verification cleans/rebuilds `dist/`, checks packaged output and types, runs unit/archived-save tests and all eight browser suites (including offline play, production Frankfurt and randomized traffic). Browser verification needs installed Google Chrome by default and manages its own temporary server on an available port. `npm test` runs unit tests alone; `npm run test:browser` runs browser tests against the most recent build. Set `BROWSER_CHANNEL`, `BASE_URL` or `ARTIFACT_DIR` to override browser channel, an existing preview URL or the default ignored `test-results/` artifact directory. Tests use isolated browser contexts, never your personal saves. Precise clearance regressions substitute a scripted test catalog; random-traffic and offline checks use the production game.
-
-For interactive preview, run `npm run dev` after building, then open `http://localhost:4173`. If that port is occupied, use `npx http-server dist -p 4174 -c-1` instead. `npm run format:check` checks source formatting. `npm run benchmark` records simulation/draw/save timings separately from correctness checks. Frozen references and measurement caveats are in [tests/baselines/README.md](tests/baselines/README.md).
-
-The simulation is in `src/sim.js`, Canvas map in `src/map.js`, and interface in `src/app.js`. HTML/CSS are authored in `web/` and airport packages live under `data/airports/`. `dist/` is entirely generated and ignored, so cleaning it cannot remove source. The standalone HTML is generated but remains tracked for immediate offline play. Pathfinding uses ngraph.graph and ngraph.path, and interface icons use Lucide. These libraries retain their upstream licenses in `node_modules` and bundled license notices.
-
-WebMCP registration is optional and feature-detected: read the simulation or issue the same clearances exposed by the interface. Unsupported browsers simply run the regular game.
+Map data is provided by [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/).

@@ -569,9 +569,7 @@ export class AirportMap {
         continue;
       const selected = p.id === this.selected;
       const runwayBadge =
-        p.direction === "arrival" &&
-        ["approach", "landing"].includes(p.state) &&
-        p.runwayKey
+        p.direction === "arrival" && p.state === "landing" && p.runwayKey
           ? `RWY ${this.sim.runwayFor(p).label}`
           : null;
       if (s.offscreen) {

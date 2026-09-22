@@ -46,7 +46,7 @@ try {
       if (
         !label ||
         !/ETA \d+:\d{2}$/.test(label.text) ||
-        !badges.includes(runwayBadge)
+        badges.includes(runwayBadge)
       )
         return false;
       groundControl.map.ctx.font = `${label.size}px ui-monospace, monospace`;
@@ -211,6 +211,23 @@ try {
     session.dispatch(1, "taxi");
     while (sim.planes[0].state !== "holding") sim.tick(0.05);
   });
+  assert.ok(
+    await rollingPage.evaluate(() => {
+      const badges = [],
+        original = groundControl.map.badge.bind(groundControl.map),
+        arrival = groundControl.sim.planes[3];
+      groundControl.map.badge = (text, ...args) => {
+        badges.push(text);
+        return original(text, ...args);
+      };
+      groundControl.map.draw();
+      groundControl.map.badge = original;
+      return (
+        arrival.state === "landing" &&
+        badges.includes(`RWY ${groundControl.sim.runwayFor(arrival).label}`)
+      );
+    }),
+  );
   await rollingPage.waitForFunction(() =>
     document
       .getElementById("runway-status")
