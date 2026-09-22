@@ -2,20 +2,11 @@
 
 ![How to play Airport Ground Control](media/how-to-play.png)
 
+[![Start Playing](media/start-playing.svg)](https://airportgroundcontrol.github.io/)
+
 Ground Control is a browser-based airport surface-control game. Direct aircraft between stands, taxiways and runways while keeping traffic moving safely.
 
 The airport maps use real-world geometry. Aircraft follow the mapped taxiway network, use compatible stands and behave differently according to their size and performance. The traffic, weather and operating scenarios are simulated.
-
-## Start Playing
-
-Open **Ground Control.html** in a browser. The game is fully self-contained and does not require an internet connection or account.
-
-Choose an airport from the selector in the top bar:
-
-- **EGPH / Edinburgh** - a compact airport with one physical runway and 33 playable stands.
-- **EDDF / Frankfurt** - a large airport with four physical runways, multiple operating configurations and 53 playable stands.
-
-The simulation starts at **1x** speed. Use the controls in the top bar to pause or switch to **4x**.
 
 ## Objective
 
@@ -167,9 +158,5 @@ The game automatically saves progress in the current browser. Reloading restores
 The trash button in the top bar deletes the current airport's save and starts a new randomized game at **1x** speed.
 
 Saves belong to the browser profile and page address where they were created. Clearing browser data or using private browsing may remove them. Game time does not advance while the page is closed.
-
-## Simulation Scope
-
-Ground Control is a game, not an operational aviation tool. Airport geometry is based on real map data, but traffic, schedules, weather, stand restrictions and operating procedures are simplified for gameplay. It does not reproduce certified airport procedures or provide real-world ATC guidance.
 
 Map data is provided by [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/).
