@@ -12,6 +12,7 @@ const result = await build({
   bundle: true,
   write: false,
   format: "iife",
+  loader: { ".glb": "binary" },
   plugins: [
     {
       name: "test-airports",
@@ -51,7 +52,8 @@ try {
   assert.equal(await page.title(), "Ground Control | North Field");
   assert.equal(await page.locator(".runway-symbol").textContent(), "17");
   assert.equal(await page.locator("#clock").textContent(), "10:00:00");
-  assert.ok(!/Edinburgh|EGPH|D1/.test(await page.locator("body").innerText()));
+  assert.ok(!/D1/.test(await page.locator("body").innerText()));
+  assert.match(await page.locator("body").innerText(), /North Field/);
   assert.ok(
     await page.evaluate(
       () =>

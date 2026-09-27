@@ -56,7 +56,7 @@ test("new-game seeds vary counts, callsigns, weighted types, compatible stands a
       stands.add(p.stand);
     }
     for (const p of sim.planes) types.add(p.type);
-    within(sim.arrivalETA(arrivals[0]), 360, 0.15);
+    within(sim.arrivalETA(arrivals[0]), 480, 0.15);
     if (arrivals[1])
       assert.ok(
         sim.arrivalETA(arrivals[1]) - sim.arrivalETA(arrivals[0]) >= 120 - 1e-8,
@@ -114,7 +114,10 @@ test("same seed reproduces initial and future traffic; save restores the exact P
   assert.deepEqual(snapshot(a), snapshot(b));
   assert.ok(a.nextId > saved.nextId);
   assert.ok(a.planes.filter((p) => p.direction === "departure").length <= 6);
-  assert.ok(a.planes.filter((p) => p.state !== "done").length <= 24);
+  assert.ok(
+    a.planes.filter((p) => p.state !== "done").length <=
+      defaultAirport.scenario.traffic.maxActive,
+  );
 });
 
 test("automatic traffic adds only arrivals and respects capacity and bounded intervals", () => {
@@ -157,7 +160,7 @@ test("random departure generation is limited to a new game's opening roster", ()
   const occupied = sim.planes.length;
   sim.spawnRandomDeparture();
   assert.equal(sim.planes.length, occupied);
-  assert.ok(occupied > 10);
+  assert.ok(occupied > 5);
   for (const p of sim.planes)
     assert.equal(sim.standReason(p, p.stand, { route: false }), null);
 });

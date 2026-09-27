@@ -50,6 +50,15 @@ test("save restores an active runway, mid-motion aircraft, counters, schedules a
       speed: 8,
       paused: true,
       camera: { x: 30, y: 40, zoom: 0.5 },
+      mapCameras: {
+        "2d": { x: 30, y: 40, zoom: 0.5 },
+        "3d": { x: -120, y: 75, zoom: 0.2 },
+      },
+      towerView: {
+        tower: { yaw: 1.2, pitch: -0.1, fov: 35 },
+        cameras: {},
+      },
+      cameraFeeds: [],
     }),
   );
   const restored = new GroundSim(data),
@@ -58,6 +67,15 @@ test("save restores an active runway, mid-motion aircraft, counters, schedules a
   assert.equal(result.ui.selected, 4);
   assert.equal(result.ui.speed, 1);
   assert.equal(result.ui.paused, true);
+  assert.deepEqual(result.ui.mapCameras, {
+    "2d": { x: 30, y: 40, zoom: 0.5 },
+    "3d": { x: -120, y: 75, zoom: 0.2 },
+  });
+  assert.deepEqual(result.ui.towerView, {
+    tower: { yaw: 1.2, pitch: -0.1, fov: 35 },
+    cameras: {},
+  });
+  assert.deepEqual(result.ui.cameraFeeds, []);
   assert.ok(restored.conflictPairs instanceof Set);
   assert.equal(restored.runwayOwner, null);
   assert.equal(restored.clearedArrivalForRunway(restored.planes[3]).id, 4);
@@ -80,15 +98,15 @@ test("holding and conditional traffic clearances survive serialization and still
   s.command(2, "taxi");
   for (let i = 0; i < 250; i++) s.tick(0.1);
   s.command(1, "taxi");
-  assert.ok(s.command(1, "follow", { targetId: 2 }).ok);
+  assert.ok(s.command(2, "follow", { targetId: 1 }).ok);
   assert.ok(
-    s.command(1, "holdshort", { holdPoint: s.holdOptions(s.planes[0])[0].id })
+    s.command(2, "holdshort", { holdPoint: s.holdOptions(s.planes[1])[0].id })
       .ok,
   );
   const restored = new GroundSim(data);
   assert.ok(restoreSimulation(restored, clone(captureSimulation(s))));
-  assert.equal(restored.planes[0].trafficOrder.targetId, 2);
-  assert.deepEqual(restored.planes[0].holdLimit, s.planes[0].holdLimit);
+  assert.equal(restored.planes[1].trafficOrder.targetId, 1);
+  assert.deepEqual(restored.planes[1].holdLimit, s.planes[1].holdLimit);
   for (let i = 0; i < 500; i++) {
     restored.tick(0.1);
     s.tick(0.1);
@@ -136,7 +154,7 @@ test("corrupt or incompatible saves remain untouched until explicit deletion", (
   for (const corrupt of [
     (raw) => "{bad json",
     (raw) => raw.replace('"version":2', '"version":999'),
-    (raw) => raw.replace('"airport":"EGPH"', '"airport":"OTHER"'),
+    (raw) => raw.replace('"airport":"EGLC"', '"airport":"OTHER"'),
   ]) {
     const store = memory(),
       saves = new GameStorage(data, () => store),
@@ -202,18 +220,30 @@ test("invalid view preferences fall back safely without discarding the game", ()
       selected: 999,
       speed: 999,
       camera: { x: 1e300, y: 0, zoom: 0 },
+      mapCameras: {
+        "2d": { x: 0, y: 0, zoom: -1 },
+        "3d": { x: Infinity, y: 0, zoom: 1 },
+      },
+      towerView: {
+        tower: { yaw: 9, pitch: 2, fov: 900 },
+        cameras: { missing: { yaw: 0, pitch: 0, fov: 40 } },
+      },
       waypoints: ["missing"],
       destination: "missing",
       runwayChoice: "missing",
+      cameraFeeds: ["missing", 3],
     },
     s,
   );
   assert.equal(ui.selected, 1);
   assert.equal(ui.speed, 1);
   assert.equal(ui.camera, null);
+  assert.deepEqual(ui.mapCameras, { "2d": null, "3d": null });
+  assert.equal(ui.towerView, null);
   assert.deepEqual(ui.waypoints, []);
   assert.equal(ui.destination, "");
   assert.equal(ui.runwayChoice, "");
+  assert.deepEqual(ui.cameraFeeds, []);
 });
 
 test("an explicit restart replaces the saved session", () => {
@@ -258,12 +288,12 @@ test("snapshots restore every stage of a full departure and arrival cycle", () =
   advance(s, 1, "done");
   check();
   s.nextId = 4;
-  s.spawnArrival("KLM927", "A333");
+  s.spawnArrival("KLM927", "E190");
   s.command(4, "land");
   check();
   advance(s, 4, "inbound");
   check();
-  s.command(4, "taxi", { stand: "1" });
+  s.command(4, "taxi", { stand: "3" });
   check();
   advance(s, 4, "parked");
   check();

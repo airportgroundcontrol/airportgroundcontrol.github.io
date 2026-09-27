@@ -23,6 +23,8 @@ import {
   Keyboard,
   Trash2,
   SlidersHorizontal,
+  ScanSearch,
+  Cctv,
 } from "lucide";
 import { airportCatalog, defaultAirport } from "./airports/catalog.js";
 import { populateAirportUI } from "./ui/airport.js";
@@ -30,13 +32,15 @@ import { flightStatus, requestsAction, orderedFlights } from "./sim.js";
 import { AirportMap } from "./map.js";
 import { GameSession } from "./session/game-session.js";
 import { acquireWriter } from "./session/writer-lease.js";
+import { TowerView } from "./view-3d.js";
 
 const $ = (id) => document.getElementById(id);
+const requestedAirport =
+  new URL(location.href).searchParams.get("airport") ||
+  window.__initialAirportId;
 const airportData =
-  airportCatalog.find(
-    (airport) =>
-      airport.id === new URL(location.href).searchParams.get("airport"),
-  ) || defaultAirport;
+  airportCatalog.find((airport) => airport.id === requestedAirport) ||
+  defaultAirport;
 const icon = (name) => '<i data-lucide="' + name + '"></i>';
 const icons = {
   Plane,
@@ -62,6 +66,8 @@ const icons = {
   Keyboard,
   Trash2,
   SlidersHorizontal,
+  ScanSearch,
+  Cctv,
 };
 const refreshIcons = () =>
   createIcons({ icons, attrs: { "stroke-width": 1.7 } });
@@ -98,6 +104,12 @@ let sim,
   session,
   map,
   selected = 1;
+let towerView = null,
+  viewMode = "2d";
+const viewCameras = { "2d": null, "3d": null };
+let restoredTowerView = null;
+let cameraFeedIds = new Set();
+const cameraWindows = new Map();
 let planning = false,
   waypoints = [],
   destination = "",
@@ -127,17 +139,287 @@ const canPlan = (p) =>
     (["taxi", "taxiin"].includes(p.state) && p.held && p.speed < 0.05));
 const stateText = flightStatus;
 
+const supports3D = () => airportData.views?.includes("3d");
+const mapViewportPoint = (point) => {
+  const bounds = map.canvas.getBoundingClientRect();
+  return { x: point.x + bounds.left, y: point.y + bounds.top };
+};
+
+function renderCameraMenu() {
+  const button = $("tower-cameras"),
+    menu = $("camera-menu");
+  button.hidden = !airportData.cameraViews.length;
+  button.classList.toggle("active", cameraFeedIds.size > 0);
+  menu.replaceChildren();
+  for (const camera of airportData.cameraViews) {
+    const label = document.createElement("label"),
+      input = document.createElement("input"),
+      text = document.createElement("span");
+    input.type = "checkbox";
+    input.checked = cameraFeedIds.has(camera.id);
+    input.onchange = () => setCameraFeed(camera.id, input.checked);
+    text.textContent = camera.label;
+    label.append(input, text);
+    menu.append(label);
+  }
+}
+
+function positionCameraWindow(windowElement) {
+  const slot = Number(windowElement.dataset.slot),
+    compact = innerWidth <= 600;
+  windowElement.style.left = "auto";
+  windowElement.style.top = `${58 + Math.floor(slot / 2) * (compact ? 125 : 178)}px`;
+  windowElement.style.right = `${12 + (slot % 2) * (compact ? 190 : 276)}px`;
+}
+
+function layoutCameraWindows() {
+  for (const windowElement of cameraWindows.values())
+    if (windowElement.dataset.moved !== "true")
+      positionCameraWindow(windowElement);
+}
+
+function bindCameraDrag(windowElement) {
+  const handle = windowElement.querySelector("header");
+  let drag = null;
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button")) return;
+    const panel = $("tower-panel").getBoundingClientRect(),
+      bounds = windowElement.getBoundingClientRect();
+    handle.setPointerCapture(event.pointerId);
+    drag = {
+      x: event.clientX,
+      y: event.clientY,
+      left: bounds.left - panel.left,
+      top: bounds.top - panel.top,
+    };
+    windowElement.style.right = "auto";
+    windowElement.dataset.moved = "true";
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const panel = $("tower-panel").getBoundingClientRect(),
+      width = windowElement.offsetWidth,
+      height = windowElement.offsetHeight;
+    windowElement.style.left = `${Math.max(
+      8,
+      Math.min(panel.width - width - 8, drag.left + event.clientX - drag.x),
+    )}px`;
+    windowElement.style.top = `${Math.max(
+      8,
+      Math.min(panel.height - height - 8, drag.top + event.clientY - drag.y),
+    )}px`;
+  });
+  for (const event of ["pointerup", "pointercancel"])
+    handle.addEventListener(event, () => {
+      drag = null;
+    });
+}
+
+function ensureCameraWindow(id) {
+  if (!towerView || cameraWindows.has(id)) return;
+  const camera = airportData.cameraViews.find((item) => item.id === id);
+  if (!camera) return;
+  const windowElement = document.createElement("article"),
+    header = document.createElement("header"),
+    title = document.createElement("strong"),
+    close = document.createElement("button"),
+    canvas = document.createElement("canvas"),
+    occupiedSlots = new Set(
+      [...cameraWindows.values()].map((item) => Number(item.dataset.slot)),
+    );
+  let slot = 0;
+  while (occupiedSlots.has(slot)) slot++;
+  windowElement.className = "camera-window";
+  windowElement.dataset.camera = id;
+  windowElement.dataset.slot = String(slot);
+  windowElement.dataset.moved = "false";
+  positionCameraWindow(windowElement);
+  title.textContent = camera.label;
+  close.type = "button";
+  close.setAttribute("aria-label", `Close ${camera.label}`);
+  close.innerHTML = icon("x");
+  close.onclick = () => setCameraFeed(id, false);
+  canvas.setAttribute("aria-label", camera.label + " camera view");
+  header.append(title, close);
+  windowElement.append(canvas, header);
+  $("camera-windows").append(windowElement);
+  bindCameraDrag(windowElement);
+  cameraWindows.set(id, windowElement);
+  towerView.attachCamera(id, canvas);
+  refreshIcons();
+}
+
+function setCameraFeed(id, open) {
+  if (!airportData.cameraViews.some((camera) => camera.id === id)) return false;
+  if (open && !cameraFeedIds.has(id) && cameraFeedIds.size >= 4) {
+    toast("Up to four airport camera feeds can be open at once.");
+    renderCameraMenu();
+    return false;
+  }
+  if (open) {
+    cameraFeedIds.add(id);
+    ensureCameraWindow(id);
+  } else {
+    cameraFeedIds.delete(id);
+    towerView?.detachCamera(id);
+    cameraWindows.get(id)?.remove();
+    cameraWindows.delete(id);
+  }
+  renderCameraMenu();
+  map?.draw();
+  queueMicrotask(saveGame);
+  return true;
+}
+
+function toggleCamera(id) {
+  return setCameraFeed(id, !cameraFeedIds.has(id));
+}
+
+function setViewMode(next, { remember = true } = {}) {
+  if (next === "3d" && !supports3D()) return false;
+  if (!map || !sim) return false;
+  viewCameras[viewMode] = { ...map.camera };
+  viewMode = next;
+  document.body.classList.toggle("view-3d", next === "3d");
+  $("tower-panel").hidden = next !== "3d";
+  for (const button of document.querySelectorAll("[data-view]")) {
+    const active = button.dataset.view === next;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+  if (next === "3d" && !towerView) {
+    towerView = new TowerView(
+      $("tower-scene"),
+      sim,
+      (id) => towerView.setSelected(id, true),
+      { labelRoot: $("tower-labels"), viewState: restoredTowerView },
+    );
+    map.viewpoint = () => (viewMode === "3d" ? towerView.getViewpoint() : null);
+    map.cameraViewpoints = () =>
+      viewMode === "3d" ? towerView.getCameraViewpoints() : [];
+    map.onCamera = toggleCamera;
+  }
+  if (next === "3d") for (const id of cameraFeedIds) ensureCameraWindow(id);
+  towerView?.setSelected(selected);
+  $("camera-menu").hidden = true;
+  $("tower-cameras").setAttribute("aria-expanded", "false");
+  renderCameraMenu();
+  closeMenu();
+  const nextCamera = viewCameras[next];
+  if (nextCamera) map.camera = { ...nextCamera };
+  requestAnimationFrame(() => {
+    map.resize();
+    if (!nextCamera) map.fit();
+    map.draw();
+    towerView?.resize();
+  });
+  const url = new URL(location.href);
+  if (next === "3d") url.searchParams.set("view", "3d");
+  else url.searchParams.delete("view");
+  history.replaceState(null, "", url);
+  if (remember)
+    try {
+      localStorage.setItem(`ground-control:view:${airportData.id}`, next);
+    } catch {}
+  return true;
+}
+
+function bindViewControls() {
+  const toggle = $("view-toggle");
+  const button3D = toggle.querySelector('[data-view="3d"]');
+  button3D.disabled = !supports3D();
+  button3D.title = supports3D()
+    ? "Tower view with 2D controls"
+    : "3D tower view is not available for this airport yet";
+  toggle.querySelectorAll("button").forEach((button) => {
+    button.onclick = () => setViewMode(button.dataset.view);
+  });
+  renderCameraMenu();
+  $("tower-cameras").onclick = (event) => {
+    event.stopPropagation();
+    const menu = $("camera-menu"),
+      open = menu.hidden;
+    menu.hidden = !open;
+    $("tower-cameras").setAttribute("aria-expanded", String(open));
+  };
+  document.addEventListener("pointerdown", (event) => {
+    if (
+      !$("camera-menu").hidden &&
+      !$("camera-menu").contains(event.target) &&
+      !$("tower-cameras").contains(event.target)
+    ) {
+      $("camera-menu").hidden = true;
+      $("tower-cameras").setAttribute("aria-expanded", "false");
+    }
+  });
+  $("tower-binoculars").onclick = () => {
+    if (!towerView) return;
+    const active = towerView.camera.fov > 12;
+    towerView.camera.fov = active ? 8 : 50;
+    towerView.camera.updateProjectionMatrix();
+    $("tower-binoculars").classList.toggle("active", active);
+  };
+  $("tower-reset").onclick = () => {
+    towerView?.resetView();
+    $("tower-binoculars").classList.remove("active");
+  };
+  const setMapHeight = (height) => {
+    const maximum = Math.max(
+      180,
+      innerHeight - 180 - $("tower-panel").offsetTop,
+    );
+    const value = Math.round(Math.max(180, Math.min(maximum, height)));
+    document.documentElement.style.setProperty(
+      "--control-map-height",
+      `${value}px`,
+    );
+    $("view-resizer").setAttribute("aria-valuenow", String(value));
+  };
+  let resize = null;
+  $("view-resizer").addEventListener("pointerdown", (event) => {
+    $("view-resizer").setPointerCapture(event.pointerId);
+    resize = {
+      y: event.clientY,
+      height: $("map").getBoundingClientRect().height,
+    };
+  });
+  $("view-resizer").addEventListener("pointermove", (event) => {
+    if (resize) setMapHeight(resize.height + resize.y - event.clientY);
+  });
+  for (const event of ["pointerup", "pointercancel"])
+    $("view-resizer").addEventListener(event, () => {
+      resize = null;
+    });
+  $("view-resizer").addEventListener("keydown", (event) => {
+    if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    setMapHeight(
+      $("map").getBoundingClientRect().height +
+        (event.key === "ArrowUp" ? 24 : -24),
+    );
+  });
+}
+
 function readView() {
+  viewCameras[viewMode] = { ...map.camera };
   return {
     selected,
     speed: session.speed,
     paused: modalPaused ?? session.paused,
     labels: map.labels,
     camera: map.camera,
+    mapCameras: Object.fromEntries(
+      Object.entries(viewCameras).map(([mode, camera]) => [
+        mode,
+        camera ? { ...camera } : null,
+      ]),
+    ),
+    towerView: towerView?.captureViewState() || restoredTowerView,
     planning,
     waypoints,
     destination,
     runwayChoice,
+    cameraFeeds: [...cameraFeedIds],
   };
 }
 function saveGame() {
@@ -325,26 +607,28 @@ function select(id, anchor) {
   }
   selected = id;
   map.selected = id;
+  towerView?.setSelected(id);
   menuOpen = true;
   document.body.classList.add("context-open");
+  const mapBounds = map.canvas.getBoundingClientRect();
   if (!anchor) {
-    const point = map.screen(p);
+    const point = mapViewportPoint(map.screen(p));
     const top = document
       .querySelector(".topbar")
       .getBoundingClientRect().bottom;
     if (
-      point.x < 45 ||
-      point.x > usableWidth() - 45 ||
-      point.y < top + 60 ||
-      point.y > innerHeight - 60
+      point.x < mapBounds.left + 45 ||
+      point.x > mapBounds.right - 45 ||
+      point.y < Math.max(top, mapBounds.top) + 45 ||
+      point.y > mapBounds.bottom - 45
     ) {
-      map.camera.x =
-        p.x + (innerWidth / 2 - usableWidth() / 2) / map.camera.zoom;
-      map.camera.y =
-        p.y + (innerHeight / 2 - (innerHeight + top) / 2) / map.camera.zoom;
+      map.camera.x = p.x;
+      map.camera.y = p.y;
     }
   }
-  menuAnchor = anchor || map.screen(p);
+  menuAnchor = anchor
+    ? mapViewportPoint(anchor)
+    : mapViewportPoint(map.screen(p));
   lastMenu = "";
   render();
   $("aircraft-menu").focus({ preventScroll: true });
@@ -352,16 +636,19 @@ function select(id, anchor) {
 function positionMenu() {
   if (!menuOpen) return;
   const menu = $("aircraft-menu");
-  const anchor = menuAnchor || map.screen(selectedPlane());
-  const top =
-    document.querySelector(".topbar").getBoundingClientRect().bottom + 10;
-  const right = Math.max(menu.offsetWidth + 24, usableWidth() - 12);
+  const anchor = menuAnchor || mapViewportPoint(map.screen(selectedPlane()));
+  const bounds = map.canvas.getBoundingClientRect();
+  const top = Math.max(
+    document.querySelector(".topbar").getBoundingClientRect().bottom + 10,
+    bounds.top + 10,
+  );
+  const right = Math.max(menu.offsetWidth + 24, bounds.right - 12);
   let x = anchor.x + 26;
   if (x + menu.offsetWidth > right) x = anchor.x - menu.offsetWidth - 26;
   x = Math.max(12, Math.min(right - menu.offsetWidth, x));
   const y = Math.max(
     top,
-    Math.min(innerHeight - menu.offsetHeight - 12, anchor.y - 24),
+    Math.min(bounds.bottom - menu.offsetHeight - 12, anchor.y - 24),
   );
   menu.style.left = x + "px";
   menu.style.top = y + "px";
@@ -398,13 +685,22 @@ function options(p) {
     primary = false,
     disabled = false,
   ) => ({ id, label, glyph, key, primary, disabled });
-  if (p.state === "gate")
+  if (p.state === "gate") {
+    const movements = sim.pushbackOptions(p),
+      selfManeuver = movements[0]?.mode === "self";
     return [
-      action("pushback", "Approve pushback", "corner-down-left", "P", true),
-      ...(sim.pushbackOptions(p).length > 1
-        ? [action("pushbackchoice", "Pushback direction...", "route", "R")]
+      action(
+        "pushback",
+        selfManeuver ? "Start taxi" : "Approve pushback",
+        selfManeuver ? "play" : "corner-down-left",
+        "P",
+        true,
+      ),
+      ...(movements.length > 1
+        ? [action("pushbackchoice", "Departure movement...", "route", "R")]
         : []),
     ];
+  }
   if (p.state === "landing" && p.airborne)
     return [action("goaround", "Go around", "undo-2", "G")];
   if (p.state === "approach") {
@@ -819,9 +1115,14 @@ function render() {
   if (!sim) return;
   const p = selectedPlane();
   map.aircraftBounds = {
-    right: innerWidth - 65,
-    top: document.querySelector(".topbar").getBoundingClientRect().bottom + 100,
+    right: map.width - 65,
+    top:
+      viewMode === "3d"
+        ? 20
+        : document.querySelector(".topbar").getBoundingClientRect().bottom +
+          100,
   };
+  towerView?.setSelected(selected);
   $("clock").textContent = formatTime(sim.time);
   $("movements").textContent = sim.completed;
   $("score").textContent = sim.score;
@@ -1040,7 +1341,7 @@ document.addEventListener("pointerdown", (e) => {
   if (
     menuOpen &&
     !$("aircraft-menu").contains(e.target) &&
-    !$("strips").contains(e.target) &&
+    !$("strips")?.contains(e.target) &&
     e.target !== $("map")
   )
     closeMenu();
@@ -1129,8 +1430,9 @@ document.addEventListener("keydown", (e) => {
 });
 window.addEventListener("resize", () => {
   closeMenu();
+  layoutCameraWindows();
 });
-for (const event of ["click", "change", "keydown", "pointerup"])
+for (const event of ["click", "change", "keydown", "pointerup", "wheel"])
   document.addEventListener(event, () => queueMicrotask(saveGame));
 window.addEventListener("pagehide", (event) => {
   if (event.persisted) saveGame();
@@ -1167,6 +1469,7 @@ async function start() {
       }
       const url = new URL(location.href);
       url.searchParams.set("airport", airport.id);
+      if (!airport.views.includes("3d")) url.searchParams.delete("view");
       location.assign(url.href);
     });
     refreshIcons();
@@ -1202,6 +1505,12 @@ async function start() {
         }
       },
       () => closeMenu(),
+      (id) => {
+        if (viewMode !== "3d" || !towerView) return;
+        closeMenu();
+        towerView.setSelected(id, true);
+        map.draw();
+      },
     );
     $("map-loading").hidden = true;
     if (saved.status === "restored") {
@@ -1212,7 +1521,10 @@ async function start() {
       map.labels = ui.labels;
       $("labels").classList.toggle("active", ui.labels);
       $("labels").setAttribute("aria-pressed", String(ui.labels));
-      if (ui.camera) map.camera = ui.camera;
+      viewCameras["2d"] = ui.mapCameras["2d"] || ui.camera;
+      viewCameras["3d"] = ui.mapCameras["3d"] || ui.camera;
+      if (viewCameras["2d"]) map.camera = { ...viewCameras["2d"] };
+      restoredTowerView = ui.towerView;
       document
         .querySelectorAll("[data-speed]")
         .forEach((b) =>
@@ -1221,11 +1533,24 @@ async function start() {
       pause(ui.paused);
       destination = ui.destination;
       runwayChoice = ui.runwayChoice;
+      cameraFeedIds = new Set(ui.cameraFeeds);
       if (ui.planning && canPlan(selectedPlane())) {
         waypoints = ui.waypoints;
         preview();
       }
     }
+    bindViewControls();
+    let initialView = window.__initialViewMode;
+    if (!initialView)
+      initialView = new URL(location.href).searchParams.get("view");
+    if (!initialView)
+      try {
+        initialView = localStorage.getItem(
+          `ground-control:view:${airportData.id}`,
+        );
+      } catch {}
+    if (initialView !== "3d" || !supports3D()) initialView = "2d";
+    setViewMode(initialView, { remember: false });
     const dataDownload = $("airport-dialog").querySelector("a");
     dataDownload.href = URL.createObjectURL(
       new Blob([JSON.stringify(airportData)], { type: "application/json" }),
@@ -1245,7 +1570,15 @@ async function start() {
       select,
       issue,
       preview,
+      setViewMode,
+      setCameraFeed,
       setPaused: pause,
+      get towerView() {
+        return towerView;
+      },
+      get viewMode() {
+        return viewMode;
+      },
       getState: () => ({
         time: sim.time,
         score: sim.score,
@@ -1374,6 +1707,7 @@ async function start() {
       previous = now;
       if (!document.hidden) session.advance(dt);
       map.draw();
+      if (viewMode === "3d") towerView?.render();
       if (now - lastUI > 150) {
         render();
         lastUI = now;
@@ -1387,5 +1721,6 @@ async function start() {
     console.error(error);
   }
 }
+window.addEventListener("pagehide", () => towerView?.dispose(), { once: true });
 refreshIcons();
 start();

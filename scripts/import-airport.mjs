@@ -62,7 +62,7 @@ const features = ways
     (w) =>
       w.tags.aeroway ||
       w.tags.building ||
-      w.tags.highway ||
+      (w.tags.highway && metadata.includeRoadFeatures !== false) ||
       w.tags.natural === "wood",
   )
   .map((w) => ({
@@ -146,10 +146,15 @@ const stands = routeWays
       node: path.at(-1),
       exit: path[0],
       path,
-      heading: Math.atan2(
-        nodes.get(path.at(-1)).y - nodes.get(path.at(-2)).y,
-        nodes.get(path.at(-1)).x - nodes.get(path.at(-2)).x,
-      ),
+      heading: metadata.noseOutStandIds?.includes(w.tags.ref || w.id)
+        ? Math.atan2(
+            nodes.get(path.at(-2)).y - nodes.get(path.at(-1)).y,
+            nodes.get(path.at(-2)).x - nodes.get(path.at(-1)).x,
+          )
+        : Math.atan2(
+            nodes.get(path.at(-1)).y - nodes.get(path.at(-2)).y,
+            nodes.get(path.at(-1)).x - nodes.get(path.at(-2)).x,
+          ),
     };
   })
   .filter((s) => connected.has(s.exit))
@@ -194,7 +199,7 @@ const geometry = {
       x: n.x,
       y: n.y,
       hold: n.tags.aeroway === "holding_position",
-      ref: n.tags.ref || "",
+      ref: metadata.holdingPointRefs?.[n.id] || n.tags.ref || "",
     })),
   edges: edges.filter((e) => connected.has(e.a)),
   stands,

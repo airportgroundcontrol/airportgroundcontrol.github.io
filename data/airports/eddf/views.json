@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "tower": {
+    "featureId": "129836215",
+    "structureHeight": 65,
+    "viewpointHeight": 62,
+    "heightSource": {
+      "name": "DFS Frankfurt Tower profile",
+      "url": "https://karriere.dfs.de/en/air-traffic-controller/a-day-in-the-work-life"
+    }
+  },
+  "cameras": [
+    {
+      "id": "t1-apron",
+      "label": "Terminal 1 Apron",
+      "shortLabel": "T1",
+      "position": { "x": -350, "y": -1080, "height": 28 },
+      "target": { "x": 120, "y": -1660, "height": 4 },
+      "fov": 52
+    },
+    {
+      "id": "t2-apron",
+      "label": "Terminal 2 Apron",
+      "shortLabel": "T2",
+      "position": { "x": 900, "y": -1300, "height": 26 },
+      "target": { "x": 560, "y": -1810, "height": 4 },
+      "fov": 52
+    },
+    {
+      "id": "cargo-south",
+      "label": "Cargo South",
+      "shortLabel": "CGO",
+      "position": { "x": -1720, "y": -340, "height": 22 },
+      "target": { "x": -1900, "y": -780, "height": 3 },
+      "fov": 48
+    },
+    {
+      "id": "west-apron",
+      "label": "West Remote Apron",
+      "shortLabel": "WEST",
+      "position": { "x": -2480, "y": 130, "height": 21 },
+      "target": { "x": -2390, "y": -260, "height": 3 },
+      "fov": 50
+    },
+    {
+      "id": "runway-north",
+      "label": "Runway 18 North",
+      "shortLabel": "18N",
+      "position": { "x": -3380, "y": 1710, "height": 18 },
+      "target": { "x": -3175, "y": 720, "height": 2 },
+      "fov": 44
+    },
+    {
+      "id": "runway-east",
+      "label": "East Runway Complex",
+      "shortLabel": "EAST",
+      "position": { "x": 700, "y": 100, "height": 20 },
+      "target": { "x": 1030, "y": -980, "height": 2 },
+      "fov": 46
+    }
+  ]
+}

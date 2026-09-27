@@ -8,6 +8,12 @@ Ground Control is a browser-based airport surface-control game. Direct aircraft 
 
 The airport maps use real-world geometry. Aircraft follow the mapped taxiway network, use compatible stands and behave differently according to their size and performance. The traffic, weather and operating scenarios are simulated.
 
+Playable airports:
+
+- **London City Airport (EGLC / LCY)** - compact runway 09/27 operation with 15 nose-out stands, 2D control and a 3D tower view.
+- **Frankfurt Airport (EDDF / FRA)** - a larger multi-runway operation with 2D control and a 3D tower view.
+- **Orlando International Airport (KMCO / MCO)** - four real parallel runways, 50 playable stands across the airsides and Terminal C, 2D control and a 3D tower view.
+
 ## Objective
 
 Manage aircraft from arrival to departure for as long as possible:
@@ -34,9 +40,9 @@ Actions that are not currently safe or valid are unavailable. Successful clearan
 
 ## Departures
 
-1. Select an aircraft at a stand and approve pushback.
-2. Choose a pushback direction where multiple options are available.
-3. Wait for pushback and tug disconnection to finish.
+1. Select an aircraft at a stand and start its departure movement.
+2. Choose a pushback direction where multiple options are available. Nose-out stands may taxi forward without a tug.
+3. For tug-assisted stands, wait for pushback and tug disconnection to finish.
 4. Open the aircraft again and choose **Plan taxi route**.
 5. Select the departure runway and add any desired taxiway waypoints.
 6. Issue the taxi clearance and monitor other ground traffic.
@@ -106,36 +112,36 @@ An aircraft that needs a controller action pulses gently. Labels show the callsi
 
 - A completed arrival or departure earns **100 points**.
 - An unresolved ground conflict costs **20 points**.
-- An automatic go-around caused by missing clearance costs **25 points**.
+- Go-arounds and conflicts cost points according to the airport scenario.
 - Normal queue spacing, automatic yielding and instructed holds do not cost points.
 
 The top bar displays completed movements, score and conflicts.
 
 ## Keyboard Shortcuts
 
-| Action | Key |
-| --- | --- |
-| Approve pushback | **P** |
-| Choose pushback direction | **R** |
-| Plan taxi route | **T** |
-| Issue taxi clearance | **Enter** |
-| Hold or resume | **H** |
-| Clear to land | **L** |
-| Go around | **G** |
-| Cross runway | **K** |
-| Line up and wait | **U** |
-| Rolling departure | **O** |
-| Clear for takeoff | **D** |
-| Taxi to holding point | **B** |
-| Hold short | **S** |
-| Follow aircraft | **Y** |
-| Give way | **W** |
-| Continue past holding limit | **C** |
-| Cancel traffic instruction | **X** |
-| Next request | **N** |
-| Pause or resume | **Space** |
-| Fit airport | **F** |
-| Close menu or cancel route | **Esc** |
+| Action                      | Key       |
+| --------------------------- | --------- |
+| Approve pushback            | **P**     |
+| Choose pushback direction   | **R**     |
+| Plan taxi route             | **T**     |
+| Issue taxi clearance        | **Enter** |
+| Hold or resume              | **H**     |
+| Clear to land               | **L**     |
+| Go around                   | **G**     |
+| Cross runway                | **K**     |
+| Line up and wait            | **U**     |
+| Rolling departure           | **O**     |
+| Clear for takeoff           | **D**     |
+| Taxi to holding point       | **B**     |
+| Hold short                  | **S**     |
+| Follow aircraft             | **Y**     |
+| Give way                    | **W**     |
+| Continue past holding limit | **C**     |
+| Cancel traffic instruction  | **X**     |
+| Next request                | **N**     |
+| Pause or resume             | **Space** |
+| Fit airport                 | **F**     |
+| Close menu or cancel route  | **Esc**   |
 
 The keyboard button in the top bar opens this reference inside the game.
 
@@ -160,3 +166,5 @@ The trash button in the top bar deletes the current airport's save and starts a 
 Saves belong to the browser profile and page address where they were created. Clearing browser data or using private browsing may remove them. Game time does not advance while the page is closed.
 
 Map data is provided by [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) under the [Open Database License](https://opendatacommons.org/licenses/odbl/1-0/).
+
+The logo-free A320 model is provided by [amvlab aircraft-models](https://github.com/amvlab/aircraft-models) under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) and is modified at runtime for Ground Control.

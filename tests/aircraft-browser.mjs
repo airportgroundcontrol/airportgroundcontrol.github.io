@@ -36,23 +36,23 @@ try {
   });
   await page.evaluate(() => groundControl.select(4));
   assert.equal(
-    await page.locator('#stand-select option[value="14"]').isDisabled(),
+    await page.locator('#stand-select option[value="3"]').isDisabled(),
     true,
   );
   assert.match(
-    await page.locator('#stand-select option[value="14"]').innerText(),
-    /Too small/,
+    await page.locator('#stand-select option[value="3"]').innerText(),
+    /Occupied|Reserved/,
   );
   assert.equal(
-    await page.locator('#stand-select option[value="1"]').isDisabled(),
+    await page.locator('#stand-select option[value="5"]').isDisabled(),
     false,
   );
-  await page.getByLabel("DESTINATION STAND").selectOption("1");
+  await page.getByLabel("DESTINATION STAND").selectOption("5");
   await page.locator("#map").focus();
   await page.keyboard.press("t");
   await page.keyboard.press("Enter");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
-  await page.screenshot({ path: artifact("aircraft-widebody-stand.png") });
+  await page.screenshot({ path: artifact("aircraft-stand-selection.png") });
 
   // The same browser profile must never create a competing save writer.
   const second = await context.newPage();

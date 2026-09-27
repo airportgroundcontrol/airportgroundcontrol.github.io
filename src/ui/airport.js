@@ -43,6 +43,12 @@ export function populateAirportUI(airport, catalog, onSelect) {
         "small",
         `${item.activeRunways.length} active runway${item.activeRunways.length === 1 ? "" : "s"} · ${item.stands.length} playable stands`,
       ],
+      [
+        "small",
+        item.views.includes("3d")
+          ? "2D + 3D tower view"
+          : "2D view · 3D coming later",
+      ],
     ]) {
       const element = document.createElement(tag);
       element.textContent = content;

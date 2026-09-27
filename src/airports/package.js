@@ -33,10 +33,37 @@ export function createAirportPackage({
   operations,
   scenario,
   fleet = null,
+  views = ["2d"],
+  towerView = null,
+  cameraViews = [],
+  environment = null,
 }) {
   requireValue(
     geometry && operations && scenario,
     "geometry, operations and scenario required",
+  );
+  requireValue(
+    Array.isArray(views) &&
+      views.includes("2d") &&
+      views.every((view) => ["2d", "3d"].includes(view)) &&
+      new Set(views).size === views.length,
+    "supported views",
+  );
+  requireValue(
+    Array.isArray(cameraViews) && cameraViews.length <= 12,
+    "camera views",
+  );
+  requireValue(
+    !views.includes("3d") || towerView,
+    "tower view required for 3d",
+  );
+  requireValue(
+    cameraViews.length === 0 || views.includes("3d"),
+    "camera views require 3d",
+  );
+  unique(
+    cameraViews.map((camera) => camera.id),
+    "camera views",
   );
   requireValue(
     token(geometry.id) &&
@@ -105,11 +132,17 @@ export function createAirportPackage({
       options.map((o) => o.id),
       "pushback choices",
     );
+    requireValue(
+      options.filter((option) => option.default === true).length <= 1,
+      "default pushback choice",
+    );
     for (const option of options) {
       requireValue(
         option.id !== "standard" &&
           text(option.label) &&
           ["tug", "self"].includes(option.mode) &&
+          (option.default === undefined ||
+            typeof option.default === "boolean") &&
           connectedPath(option.path) &&
           option.path[0] === stands.get(id).node &&
           (option.mode !== "self" ||
@@ -152,6 +185,55 @@ export function createAirportPackage({
         ),
       "map feature",
     );
+  if (environment) {
+    requireValue(
+      environment.version === 1 &&
+        environment.source &&
+        text(environment.source.name) &&
+        text(environment.source.license) &&
+        text(environment.source.downloaded) &&
+        /^https:\/\//.test(environment.source.url) &&
+        Array.isArray(environment.features) &&
+        environment.featureStyles &&
+        typeof environment.featureStyles === "object",
+      "visual environment",
+    );
+    unique(
+      environment.features.map((feature) => feature.id),
+      "visual environment features",
+    );
+    for (const feature of environment.features)
+      requireValue(
+        ["water", "grass", "rail"].includes(feature.type) &&
+          text(feature.name) &&
+          typeof feature.closed === "boolean" &&
+          Array.isArray(feature.points) &&
+          feature.points.length >= (feature.closed ? 3 : 2) &&
+          feature.points.every(
+            (p) => Array.isArray(p) && p.length === 2 && p.every(finite),
+          ) &&
+          (feature.width === undefined ||
+            (finite(feature.width) && feature.width > 0)),
+        "visual environment feature",
+      );
+    const featureIds = new Set(geometry.features.map((feature) => feature.id));
+    for (const [id, style] of Object.entries(environment.featureStyles))
+      requireValue(
+        token(id) &&
+          featureIds.has(id) &&
+          style &&
+          typeof style === "object" &&
+          ["buildingClass", "material", "roofShape", "roadClass"].every(
+            (key) => style[key] === undefined || token(style[key]),
+          ) &&
+          ["levels", "height", "roofLevels"].every(
+            (key) =>
+              style[key] === undefined ||
+              (finite(style[key]) && style[key] >= 0 && style[key] <= 300),
+          ),
+        "visual environment style " + id,
+      );
+  }
   const visited = new Set(),
     pending = [geometry.nodes[0].id];
   while (pending.length) {
@@ -304,6 +386,52 @@ export function createAirportPackage({
       bounds.maxY > bounds.minY,
     "map bounds",
   );
+  if (towerView) {
+    const towerFeature = geometry.features.find(
+      (feature) => feature.id === towerView.featureId,
+    );
+    requireValue(
+      token(towerView.featureId) &&
+        towerFeature?.points?.length >= 3 &&
+        finite(towerView.structureHeight) &&
+        towerView.structureHeight >= 10 &&
+        towerView.structureHeight <= 200 &&
+        finite(towerView.viewpointHeight) &&
+        towerView.viewpointHeight >= 5 &&
+        towerView.viewpointHeight <= towerView.structureHeight &&
+        towerView.heightSource &&
+        text(towerView.heightSource.name) &&
+        text(towerView.heightSource.url) &&
+        /^https:\/\//.test(towerView.heightSource.url),
+      "tower view",
+    );
+  }
+  for (const camera of cameraViews) {
+    requireValue(
+      text(camera.label) &&
+        token(camera.shortLabel) &&
+        point(camera.position) &&
+        point(camera.target) &&
+        finite(camera.position.height) &&
+        finite(camera.target.height) &&
+        camera.position.height >= 2 &&
+        camera.position.height <= 150 &&
+        camera.target.height >= 0 &&
+        camera.target.height <= 100 &&
+        finite(camera.fov) &&
+        camera.fov >= 20 &&
+        camera.fov <= 90 &&
+        camera.position.x >= bounds.minX &&
+        camera.position.x <= bounds.maxX &&
+        camera.position.y >= bounds.minY &&
+        camera.position.y <= bounds.maxY &&
+        Math.hypot(
+          camera.target.x - camera.position.x,
+          camera.target.y - camera.position.y,
+        ) >= 50,
+      "camera view " + camera.id,
+    );
+  }
   requireValue(
     Array.isArray(operations.map.labels) &&
       operations.map.labels.every(
@@ -521,6 +649,10 @@ export function createAirportPackage({
       operations,
       scenario,
       fleet,
+      views,
+      towerView,
+      cameraViews,
+      environment,
       activeRunways,
       runwayConfigurations,
       runwayPresets,

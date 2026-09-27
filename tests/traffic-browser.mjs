@@ -56,10 +56,9 @@ try {
   await page.keyboard.press("b");
   await page
     .getByLabel("Taxi to holding point", { exact: true })
-    .selectOption({ label: "A15" });
-  assert.equal(
-    await page.evaluate(() => groundControl.map.focusHold.ref),
-    "A15",
+    .selectOption({ index: 1 });
+  assert.ok(
+    await page.evaluate(() => groundControl.map.focusHold.ref.length > 0),
   );
   await page.screenshot({ path: artifact("holding-point-picker.png") });
   await action("Clear taxi");
@@ -110,7 +109,7 @@ try {
     for (let i = 0; i < 250; i++) s.tick(0.1);
     s.command(1, "taxi");
   });
-  await select("BAW1439");
+  await select("EZY326");
   await page.keyboard.press("y");
   assert.ok(
     await page
@@ -118,19 +117,44 @@ try {
       .locator("option")
       .count(),
   );
-  await page.getByLabel("Follow aircraft", { exact: true }).selectOption("2");
+  await page.getByLabel("Follow aircraft", { exact: true }).selectOption("1");
   await action("Issue instruction");
   assert.equal(
-    await page.evaluate(() => groundControl.sim.planes[0].trafficOrder.kind),
+    await page.evaluate(() => groundControl.sim.planes[1].trafficOrder.kind),
     "follow",
   );
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
-  await select("BAW1439");
+  await select("EZY326");
   await page.keyboard.press("x");
   assert.equal(
-    await page.evaluate(() => groundControl.sim.planes[0].trafficOrder),
+    await page.evaluate(() => groundControl.sim.planes[1].trafficOrder),
     null,
   );
+  await page.evaluate(() => {
+    const [a, b] = groundControl.sim.planes;
+    Object.assign(a, {
+      state: "taxi",
+      x: 0,
+      y: 0,
+      route: [{ x: 1200, y: 0 }],
+      node: null,
+      stand: null,
+      held: false,
+      speed: 0,
+      angle: 0,
+    });
+    Object.assign(b, {
+      state: "taxi",
+      x: 300,
+      y: -300,
+      route: [{ x: 300, y: 600 }],
+      node: null,
+      stand: null,
+      held: false,
+      speed: 0,
+      angle: Math.PI / 2,
+    });
+  });
   await select("BAW1439");
   await page.keyboard.press("w");
   await page
@@ -157,6 +181,7 @@ try {
   });
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => groundControl.map.width === innerWidth);
   await select("BAW1439");
   await page.keyboard.press("s");
   await page.screenshot({ path: artifact("holding-picker-mobile.png") });

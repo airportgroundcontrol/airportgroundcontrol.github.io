@@ -1,0 +1,372 @@
+:root {
+  --control-map-height: calc((100dvh - var(--header)) / 2);
+}
+
+.view-toggle {
+  display: flex;
+  flex-shrink: 0;
+  gap: 1px;
+  padding: 3px;
+  border-radius: 4px;
+  background: #2c2e32;
+}
+
+.view-toggle button {
+  min-width: 34px;
+  height: 25px;
+  padding: 0 7px;
+  border-radius: 3px;
+  background: transparent;
+  color: #aeb1b5;
+  font:
+    10px ui-monospace,
+    monospace;
+}
+
+.view-toggle button.active {
+  background: #4a535d;
+  color: #f3f5f6;
+}
+
+.view-toggle button:disabled {
+  opacity: 0.3;
+}
+
+.tower-panel {
+  position: fixed;
+  z-index: 1;
+  top: var(--header);
+  right: 0;
+  bottom: var(--control-map-height);
+  left: 0;
+  overflow: hidden;
+  background: #111519;
+}
+
+#tower-scene {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+#tower-scene.dragging {
+  cursor: grabbing;
+}
+
+#tower-labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.aircraft-label {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 3px 5px;
+  border: 1px solid #ffffff35;
+  border-radius: 2px;
+  background: #0f1418d9;
+  color: #eef1f3;
+  font:
+    9px ui-monospace,
+    monospace;
+  white-space: nowrap;
+}
+
+.aircraft-label.selected {
+  color: #8fc9ff;
+}
+
+.tower-reticle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #dce5eb5e;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.tower-window-frame {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  background: linear-gradient(90deg, #101417, #31383d, #101417);
+  box-shadow: 0 0 25px #000b;
+  pointer-events: none;
+}
+
+.tower-window-frame.left {
+  left: 0;
+}
+
+.tower-window-frame.right {
+  right: 0;
+}
+
+.tower-window-sill {
+  position: absolute;
+  z-index: 2;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 12px;
+  background: linear-gradient(#3b4247, #111518);
+  box-shadow: 0 -5px 25px #0009;
+  pointer-events: none;
+}
+
+.tower-tools {
+  position: absolute;
+  z-index: 8;
+  top: 14px;
+  right: 16px;
+  display: flex;
+  gap: 4px;
+}
+
+.tower-tools button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid #4d565e;
+  border-radius: 4px;
+  background: #171d21df;
+  color: #d7dde1;
+  backdrop-filter: blur(8px);
+}
+
+.tower-tools button.active {
+  background: var(--yellow);
+  color: #17191b;
+}
+
+.camera-menu {
+  position: absolute;
+  z-index: 9;
+  top: 56px;
+  right: 16px;
+  width: 220px;
+  padding: 5px;
+  border: 1px solid #596168;
+  border-radius: 5px;
+  background: #171b1ff2;
+  box-shadow: 0 12px 32px #0009;
+  backdrop-filter: blur(10px);
+}
+
+.camera-menu label {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 3px;
+  color: #d9dde0;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.camera-menu label:hover {
+  background: #30363b;
+}
+
+.camera-menu input {
+  accent-color: var(--yellow);
+}
+
+.camera-windows {
+  position: absolute;
+  z-index: 6;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.camera-window {
+  position: absolute;
+  width: 260px;
+  height: 165px;
+  min-width: 190px;
+  min-height: 120px;
+  max-width: calc(100% - 20px);
+  max-height: calc(100% - 20px);
+  overflow: hidden;
+  resize: both;
+  border: 1px solid #697177;
+  border-radius: 4px;
+  background: #111519;
+  box-shadow: 0 10px 30px #000a;
+  pointer-events: auto;
+}
+
+.camera-window header {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 30px;
+  align-items: center;
+  padding-left: 9px;
+  background: #151a1ee8;
+  color: #e0e4e7;
+  cursor: grab;
+  user-select: none;
+}
+
+.camera-window header:active {
+  cursor: grabbing;
+}
+
+.camera-window strong {
+  overflow: hidden;
+  font:
+    9px ui-monospace,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.camera-window button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  place-items: center;
+  background: transparent;
+  color: #c9ced1;
+}
+
+.camera-window button svg {
+  width: 14px;
+  height: 14px;
+}
+
+.camera-window canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.camera-window canvas.dragging {
+  cursor: grabbing;
+}
+
+.view-resizer {
+  display: none;
+}
+
+body.view-3d .tower-panel {
+  display: block !important;
+}
+
+body.view-3d .map-panel {
+  z-index: 3;
+  inset: auto 0 0;
+  height: var(--control-map-height);
+  border-top: 1px solid #5b6268;
+  box-shadow: 0 -10px 32px #0009;
+}
+
+body.view-3d .map-heading {
+  display: none;
+}
+
+body.view-3d .view-resizer {
+  position: fixed;
+  right: 0;
+  bottom: calc(var(--control-map-height) - 5px);
+  left: 0;
+  z-index: 24;
+  display: grid;
+  height: 10px;
+  place-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+body.view-3d .view-resizer span {
+  width: 58px;
+  height: 2px;
+  border-radius: 2px;
+  background: #9aa2a8;
+  box-shadow: 0 0 0 4px #161a1dcc;
+}
+
+body.view-3d .aircraft-menu {
+  max-height: calc(var(--control-map-height) - 20px);
+}
+
+body.view-3d .map-controls {
+  left: 12px;
+  bottom: 48px;
+  flex-direction: row;
+}
+
+body.view-3d .map-controls button {
+  width: 32px;
+  height: 32px;
+  border-right: 1px solid #383a3f;
+  border-bottom: 0;
+}
+
+body.view-3d .compass {
+  right: 16px;
+  bottom: 48px;
+}
+
+body.view-3d .map-footer {
+  padding: 9px 14px;
+}
+
+body.view-3d .route-banner {
+  bottom: 42px;
+}
+
+@media (max-width: 1250px) {
+  .view-toggle button {
+    min-width: 31px;
+    padding: 0 5px;
+  }
+}
+
+@media (max-width: 600px) {
+  .view-toggle {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+  }
+
+  .tower-tools {
+    top: 10px;
+    right: 10px;
+  }
+
+  .camera-menu {
+    top: 51px;
+    right: 10px;
+  }
+
+  .camera-window {
+    width: 180px;
+    height: 115px;
+    min-width: 170px;
+    min-height: 100px;
+  }
+
+  body.view-3d .map-footer .legend span:nth-child(n + 3) {
+    display: none;
+  }
+}

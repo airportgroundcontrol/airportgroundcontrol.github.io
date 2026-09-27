@@ -74,7 +74,7 @@ try {
         aircraft: count,
         workload:
           count === 24
-            ? "24 distinct Edinburgh stands, concurrent pushback"
+            ? "London City stands, concurrent departure movement"
             : "Synthetic overlapping copies; stress test, not gameplay capacity",
         tick,
         canvasDraw,

@@ -4,7 +4,7 @@
 
 The aircraft-realism update supersedes older compatibility requirements below. The user explicitly requested **no legacy support** and later removed manual game transfer: format-2 automatic local saves only, no v1 migration, alternate engine, export/import, or previous/recovery UI. Exclusive browser writer locks and fixed 0.05-second steps are implemented. Missing Web Locks uses volatile play, not a non-atomic lock fallback. Writer takeover remains unimplemented.
 
-Eleven aircraft definitions/silhouettes, type-specific movement parameters, stand/route eligibility, adjacent reservations, tug disconnection, dimension-based separation and simplified departure-wake delays are implemented. Edinburgh and Frankfurt use real OSM geometry; fleet restrictions are game assumptions. Curved gear-based paths, swept-footprint collision detection, jet blast and detailed runway/arrival-wake modeling remain incomplete. See `AIRCRAFT_REALISM_PLAN.md` for the current scope. Work is local-only; do not publish.
+Eleven aircraft definitions/silhouettes, type-specific movement parameters, stand/route eligibility, adjacent reservations, tug disconnection, dimension-based separation and simplified departure-wake delays are implemented. London City and Frankfurt use real OSM geometry; fleet restrictions are game assumptions. Curved gear-based paths, swept-footprint collision detection, jet blast and detailed runway/arrival-wake modeling remain incomplete. See `AIRCRAFT_REALISM_PLAN.md` for the current scope. Work is local-only; do not publish.
 
 The checkpoint and original phased plan below are historical design context, not the current feature inventory. Use `CONTINUE_HERE.md` and `ROADMAP.md` for current status.
 
@@ -17,9 +17,9 @@ Goal: evolve the playable MVP into a maintainable, multi-airport ground-control 
 - Phase 0: 23 archived v1 saves with continuation digests, configurable/self-contained browser runner, desktop/mobile references and same-machine performance report under `tests/baselines/`.
 - Phase 1: readable source, `web/`, unchanged geometry bytes, disposable build output, offline packaging and initial contracts. Strict TypeScript still covers contracts/traffic geometry, not the whole legacy engine/UI.
 - Phase 2 subset: `GameSession` owns engine, command results, pacing, restore/save/reset/disposal. UI and integration commands share dispatch. The former radio event history was removed from runtime and persistence. Incompatible state blocks play until explicit deletion successfully writes a replacement. Manual transfer and save-history features are out of scope by user request.
-- Airport package foundation (Phase 3/6): immutable geometry/operations/scenario inputs with runtime validation; no Edinburgh-specific operating assumptions in shared engine/map/UI/importer. Multiple physical runways and active ends, per-aircraft runway assignment, independent/shared pavement occupancy, per-runway wake state, declared runway crossings and airport-constrained runway presets/custom roles are supported. Curated arrival vacate paths replace inferred exits. The generic importer requires an explicit descriptor and writes only new validated candidates.
+- Airport package foundation (Phase 3/6): immutable geometry/operations/scenario inputs with runtime validation; no bundled-airport operating assumptions in shared engine/map/UI/importer. Multiple physical runways and active ends, per-aircraft runway assignment, independent/shared pavement occupancy, per-runway wake state, declared runway crossings and airport-constrained runway presets/custom roles are supported. Curated arrival vacate paths replace inferred exits. The generic importer requires an explicit descriptor and writes only new validated candidates.
 - User-directed sequence: GameSession first, then airport independence, without waiting for all Phase 2 product tooling. No aircraft-state migration was needed: v1 state/geometry and all 23 continuation fixtures remain identical. Additive envelope metadata identifies scenario/operations/configuration and pinned legacy compatibility. See `data/airports/README.md`.
-- Verification: 120 unit/fixture/importer checks, strict current type checks, eight browser suites, desktop/mobile Canvas and runway-planner checks, anticipated-separation/rolling-departure reload coverage, production/synthetic per-airport save switching and offline builds. Original Edinburgh OSM reimport matches existing geometry bytes exactly.
+- Verification: unit/fixture/importer checks, strict current type checks, browser suites, desktop/mobile Canvas and runway-planner checks, anticipated-separation/rolling-departure reload coverage, production/synthetic per-airport save switching and offline builds.
 - Next: continue focused UI/typed-boundary extraction, gear-aware trajectories and swept-footprint clearance. Frankfurt is the second bundled real airport.
 - Publishing this checkpoint is currently blocked: the connected account returns `Sites project not found` for the existing site. Local development and testing are unaffected; existing hosting metadata/audience remain untouched.
 
@@ -43,12 +43,12 @@ Historical baseline findings below motivated the plan. The checkpoint above reco
 | --- | --- | --- |
 | `sim.js` | Shared logic hard-codes initial stands, runway 24, D1, spawn intervals and one `runwayOwner` | A second airport or runway needs more than another JSON file |
 | `app.js` | Bootstrap, menus, shortcuts, rendering, save coordination and animation loop share module state | New controls tend to affect unrelated behavior |
-| `map.js` | Reads DOM layout and contains Edinburgh-specific camera extents, labels and runway direction text | Rendering is not yet airport-independent |
+| `map.js` | Reads DOM layout and historically contained airport-specific camera extents, labels and runway direction text | Rendering needed airport-independent configuration |
 | `persistence.js` | Version 1 and a geometry hash, but no migration chain; unsupported saves start a fresh game after attempted recovery backup | Schema changes need explicit migration and recovery behavior |
 | Clock | Simulation step size depends on rendered-frame duration; traffic checks update aircraft sequentially | Replay and timing comparisons need a defined simulation policy |
 | Build | Authored HTML/CSS and airport data live inside `dist/` beside generated output | A routine output cleanup could delete source |
 | Browser saves | Multiple tabs can overwrite the same save | Session ownership needs protection |
-| Importer | Edinburgh-specific runway/hold selection and inferred arrival exit | Additional airports need curated operations, not geometry alone |
+| Importer | Historically selected runway/hold data and inferred an arrival exit | Additional airports need curated operations, not geometry alone |
 
 The last verified baseline has 31 unit tests and three browser suites. Re-run them when implementation begins; treat that count as a historical baseline, not a completion target.
 
@@ -86,7 +86,7 @@ src/
   ui/                     menus, flight groups, toolbar, keyboard handling
   map/                    renderer, camera, pointer interaction
 web/                      authored HTML/CSS
-data/airports/egph/        geometry, operations, scenarios, provenance
+data/airports/eglc/        geometry, operations, scenarios, views, provenance
 tests/fixtures/           archived saves and deterministic scenarios
 dist/                     generated static deployment only
 ```
@@ -140,13 +140,13 @@ Depends on Phases 1-2.
 Deliverables:
 - Split airport geometry from operational configuration. Preserve OSM node/way IDs and attribution; assign stable IDs to game-specific operational resources.
 - Configure stands, eligible aircraft, pushback paths, physical runways, runway ends, holding points, entry/exit connections, protected areas and map bounds/label anchors.
-- Define scenarios separately: active runway ends, initial traffic, flight mix, spawn cadence, capacity limits, turnaround timing and scoring settings. Keep an Edinburgh legacy scenario matching today's game.
+- Define scenarios separately: active runway ends, initial traffic, flight mix, spawn cadence, capacity limits, turnaround timing and scoring settings.
 - Replace hard-coded numbers/text in the engine, UI, renderer and importer with configuration-derived values. Distinguish runway length/width/boundary data from the current proximity-to-centreline heuristic.
 - Add package validation for missing/duplicate IDs, disconnected routes, illegal runway traversal, usable pushback exits and unreachable stands. A malformed package should fail before gameplay starts.
-- Keep the existing single-runway engine behind an adapter while migrating configuration. Map legacy saves to the same Edinburgh nodes and positions; no geometry reinterpretation in this phase.
+- Keep the existing single-runway engine behind an adapter while migrating configuration; do not reinterpret live geometry during a format change.
 - Exercise a small differently named/shaped synthetic airport in tests. It is a test fixture, not a fabricated real-airport catalog entry.
 
-Acceptance: the same engine completes arrival/departure flows at Edinburgh and the synthetic airport without airport-name conditionals. Core/UI code contains no operational dependency on `EGPH`, `24`, `D1` or stands `3/8/20`. Map fitting derives from bounds. Existing saves remain valid through migration.
+Acceptance: the same engine completes arrival/departure flows at a production and synthetic airport without airport-name conditionals. Core/UI code contains no operational dependency on a runway or stand identifier. Map fitting derives from bounds. Existing current-format saves remain valid through compatible changes.
 
 ## Phase 4: UI and Renderer Separation
 
@@ -189,9 +189,9 @@ Deliverables:
 - Store intended runway end and associated entry/exit/hold in aircraft clearance state. An ordinary taxi route must stop before every protected runway boundary without a matching crossing/entry clearance.
 - Replace broad `allowRunway=true` routing with permission for the specifically cleared resource and route segment. A lineup clearance cannot authorize passage across another runway.
 - Implemented: runway selection/status controls use airport presets or capability-constrained custom roles. Mid-operation changes preserve committed approaches and runway-bound departures, reroute uncommitted departures and expose a persisted transition state until the old flow clears.
-- Migrate version-1/legacy runway ownership to Edinburgh's physical runway resource without releasing an existing aircraft's protection.
+- Preserve current-format runway ownership when mapping it to physical runway resources without releasing an existing aircraft's protection.
 
-Acceptance: tests cover opposing ends of one runway, two independent runways, intersecting runways, runway crossings, held crossings, landing/vacating, wrong-runway commands, cancelled reservations, save/reload while occupied, and invalid stand/runway routes. Edinburgh's existing cycle still passes.
+Acceptance: tests cover opposing ends of one runway, two independent runways, intersecting runways, runway crossings, held crossings, landing/vacating, wrong-runway commands, cancelled reservations, save/reload while occupied, invalid stand/runway routes and London City's full cycle.
 
 ## Phase 7: Prove It With a Second Real Airport
 

@@ -122,11 +122,11 @@ try {
     const s = groundControl.sim;
     s.planes = s.planes.filter((p) => p.id !== 4);
     s.nextId = 4;
-    s.spawnArrival("KLM927", "A333");
+    s.spawnArrival("KLM927", "E190");
   });
   await clickAircraft(4);
   assert.equal(await menuAction("Clear to land").isDisabled(), false);
-  await page.keyboard.press("l");
+  await page.keyboard.press("d");
   assert.equal(await state(4), "approach");
   assert.equal(
     await page.locator("#aircraft-menu").isVisible(),
@@ -134,12 +134,7 @@ try {
     "Rejected commands keep the menu open",
   );
   await page.keyboard.press("g");
-  assert.equal(
-    await page.evaluate(
-      () => groundControl.sim.planes.find((p) => p.id === 4).wait,
-    ),
-    0,
-  );
+  assert.equal(await state(4), "goaround");
   await clickAircraft(1);
   await page.keyboard.press("d");
   await advance(1, "done");
@@ -147,14 +142,14 @@ try {
     const s = groundControl.sim;
     s.planes = s.planes.filter((p) => p.id !== 4);
     s.nextId = 4;
-    s.spawnArrival("KLM927", "A333");
+    s.spawnArrival("KLM927", "E190");
   });
   await clickAircraft(4);
   await page.keyboard.press("l");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
   await advance(4, "inbound");
   await clickAircraft(4);
-  await page.getByLabel("DESTINATION STAND").selectOption("1");
+  await page.getByLabel("DESTINATION STAND").selectOption("3");
   await page.getByLabel("DESTINATION STAND").focus();
   await page.keyboard.press("l");
   assert.equal(
@@ -206,7 +201,7 @@ try {
     (await page.evaluate(() => groundControl.map.camera.zoom)) > beforeZoom,
   );
   assert.equal(await page.locator("#traffic-panel").count(), 0);
-  await page.getByRole("button", { name: "EGPH Edinburgh" }).click();
+  await page.getByRole("button", { name: "EGLC London City Airport" }).click();
   assert.equal(await page.locator("#airport-dialog").isVisible(), true);
   await page.getByRole("button", { name: "Close airport catalog" }).click();
   assert.deepEqual(await page.evaluate(() => Object.keys(registeredTools)), [
@@ -265,7 +260,7 @@ try {
       path: artifact("dark-overview-" + viewport.width + ".png"),
     });
     const metrics = await page.evaluate(() => {
-      const canvas = document.querySelector("canvas"),
+      const canvas = document.getElementById("map"),
         r = canvas.getBoundingClientRect();
       const data = canvas
         .getContext("2d")
@@ -297,7 +292,7 @@ try {
     const header = await page.locator(".topbar").boundingBox();
     assert.ok(
       box.width <= 240 && box.height < 120,
-      "Two-action pushback menu is compact",
+      "Departure movement menu is compact",
     );
     assert.equal(
       await page
@@ -307,7 +302,7 @@ try {
     );
     assert.equal(
       await page.locator("#aircraft-menu").innerText(),
-      "Approve pushback\nP\nPushback direction...\nR",
+      "Approve pushback\nP",
     );
     assert.ok(
       box.x >= 0 &&

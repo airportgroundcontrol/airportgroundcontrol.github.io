@@ -14,7 +14,7 @@ function setup() {
   sim.nextDeparture = Infinity;
   return sim;
 }
-function until(sim, id, state, max = 500) {
+function until(sim, id, state, max = 800) {
   let elapsed = 0;
   while (sim.planes.find((p) => p.id === id).state !== state && elapsed < max) {
     sim.tick(0.1);
@@ -23,9 +23,9 @@ function until(sim, id, state, max = 500) {
   assert.equal(sim.planes.find((p) => p.id === id).state, state);
 }
 
-test("all 33 playable stands are connected to D1 without using the runway", () => {
+test("all playable stands are connected to the departure hold without using the runway", () => {
   const sim = setup();
-  assert.equal(data.stands.length, 33);
+  assert.equal(data.stands.length, 15);
   for (const stand of data.stands) {
     const p = sim.path(stand.node, data.departureHold);
     assert.ok(p.length > 1, stand.id);
@@ -40,7 +40,7 @@ test("all 33 playable stands are connected to D1 without using the runway", () =
       );
   }
 });
-test("departure cycle follows the stand and taxiway network, stops at D1 and releases runway", () => {
+test("departure cycle follows the stand and taxiway network, holds and releases the runway", () => {
   const s = setup(),
     p = s.planes[0];
   assert.ok(s.command(p.id, "pushback").ok);
@@ -72,9 +72,10 @@ test("arrival clearance reserves a future slot and occupancy lasts through runwa
   assert.ok(s.runwayDistance(p) > 85);
   assert.equal(s.runwayOwner, null);
   assert.equal(s.command(p.id, "taxi", { stand: "3" }).ok, false);
-  assert.ok(s.command(p.id, "taxi", { stand: "1" }).ok);
+  const stand = s.freeStands(p)[0];
+  assert.ok(s.command(p.id, "taxi", { stand: stand.id }).ok);
   until(s, p.id, "parked");
-  assert.equal(p.node, s.stands.get("1").node);
+  assert.equal(p.node, stand.node);
   assert.equal(s.completed, 1);
 });
 test("hold brakes smoothly, then stays stopped until resumed", () => {
@@ -101,7 +102,9 @@ test("taxi preview goes through requested waypoints and invalid clearances prese
   assert.equal(p.state, "gate");
   s.command(p.id, "pushback");
   until(s, p.id, "ready");
-  const point = data.nodes.find((n) => n.ref === "A15");
+  const point = s
+    .holdingPoints()
+    .find((n) => n.id !== data.departureHold && s.plan(p, n.id).length > 1);
   const planned = s.plan(p, data.departureHold, [point.id]);
   assert.ok(planned.some((n) => n.id === point.id));
   assert.deepEqual(s.plan(p, data.departureHold, ["missing"]), []);

@@ -24,7 +24,7 @@ try {
   });
   const page = await context.newPage(),
     errors = [],
-    key = "ground-control:save:EGPH";
+    key = "ground-control:save:EGLC";
   page.on("pageerror", (e) => errors.push(e.message));
   await useScriptedTraffic(page.context());
   await page.goto(baseURL);

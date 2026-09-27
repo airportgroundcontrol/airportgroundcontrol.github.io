@@ -1,0 +1,43 @@
+{
+  "id": "standard",
+  "version": 1,
+  "runwayUses": [
+    { "runwayId": "09-27", "endId": "27", "arrivals": true, "departures": true }
+  ],
+  "runwayPresets": [
+    {
+      "id": "west-flow",
+      "label": "West flow",
+      "runwayUses": [{ "runwayId": "09-27", "endId": "27", "arrivals": true, "departures": true }]
+    },
+    {
+      "id": "east-flow",
+      "label": "East flow",
+      "runwayUses": [{ "runwayId": "09-27", "endId": "09", "arrivals": true, "departures": true }]
+    }
+  ],
+  "initialDepartures": [],
+  "initialArrivals": [],
+  "initialTraffic": { "departures": [2, 4], "arrivals": [1, 2] },
+  "departureStands": ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "21", "22", "23", "24"],
+  "traffic": {
+    "intervalJitter": 0.25,
+    "approachJitter": 0.15,
+    "arrivalInterval": 210,
+    "approachSeconds": 480,
+    "approachSeparationSeconds": 120,
+    "decisionSeconds": 10,
+    "departureInterval": 240,
+    "maxApproaches": 2,
+    "maxDepartures": 6,
+    "maxActive": 20,
+    "departurePrefixes": ["BAW", "CFE", "KLM", "SWR", "DLH", "LOT"],
+    "arrivalPrefixes": ["BAW", "CFE", "KLM", "SWR", "DLH", "LOT"]
+  },
+  "turnaroundSeconds": 2700,
+  "turnaroundJitter": 0.15,
+  "cleanupSeconds": 60,
+  "scoring": { "movement": 100, "goAround": 30, "conflict": 20 },
+  "clockStartSeconds": 28800,
+  "weather": { "conditions": "VMC", "wind": "270° / 08 KT" }
+}

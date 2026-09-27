@@ -17,25 +17,36 @@ export const arrivalETA = (p, data) => {
 export function pushbackOptions(sim, p) {
   const stand = sim.stands.get(p.stand);
   if (!stand) return [];
-  const configured = sim.data.operations.pushbacks?.[stand.id] || [];
+  const configured = sim.data.operations.pushbacks?.[stand.id] || [],
+    replacesStandard = configured.some(
+      (option) =>
+        option.default && (!option.types || option.types.includes(p.type)),
+    );
   return [
-    {
-      id: "standard",
-      label: "Straight back",
-      path: [...stand.path].reverse(),
-      mode: "tug",
-    },
+    ...(replacesStandard
+      ? []
+      : [
+          {
+            id: "standard",
+            label: "Straight back",
+            path: [...stand.path].reverse(),
+            mode: "tug",
+            default: true,
+          },
+        ]),
     ...configured,
-  ].filter(
-    (option) =>
-      (!option.types || option.types.includes(p.type)) &&
-      option.path.slice(1).every((id, i) => {
-        const link =
-          sim.graph.getLink(option.path[i], id) ||
-          sim.graph.getLink(id, option.path[i]);
-        return link && edgeAllows(sim.data, link.data, p.type);
-      }),
-  );
+  ]
+    .filter(
+      (option) =>
+        (!option.types || option.types.includes(p.type)) &&
+        option.path.slice(1).every((id, i) => {
+          const link =
+            sim.graph.getLink(option.path[i], id) ||
+            sim.graph.getLink(id, option.path[i]);
+          return link && edgeAllows(sim.data, link.data, p.type);
+        }),
+    )
+    .sort((a, b) => Number(b.default === true) - Number(a.default === true));
 }
 
 export function landingOptions(sim, p, runwayValue = p) {

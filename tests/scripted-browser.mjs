@@ -11,6 +11,7 @@ export async function useScriptedTraffic(context) {
       bundle: true,
       write: false,
       format: "iife",
+      loader: { ".glb": "binary" },
       plugins: [
         {
           name: "scripted-traffic",

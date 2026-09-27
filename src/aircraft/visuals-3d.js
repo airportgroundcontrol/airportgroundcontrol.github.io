@@ -1,0 +1,207 @@
+// Original low-poly profiles based on the manufacturer dimensions referenced
+// by the aircraft catalog. Values are metres in the model's local coordinates.
+const profile = (value) => {
+  for (const child of Object.values(value)) {
+    if (!child || typeof child !== "object") continue;
+    profile(child);
+  }
+  return Object.freeze(value);
+};
+
+export const aircraftVisuals3d = Object.freeze({
+  AT72: profile({
+    radius: 1.43,
+    clearance: 1.05,
+    nose: "turboprop",
+    wing: [3.0, -2.7, 1.8, -0.2, 0.72],
+    tailSpan: 9.48,
+    tail: "t",
+    engines: {
+      kind: "prop",
+      lanes: [0.245],
+      x: 1.65,
+      radius: 0.7,
+      length: 3.2,
+      blades: 6,
+    },
+    wingtip: "plain",
+    gear: { mainAxles: 1, mainLegs: 2 },
+  }),
+  E190: profile({
+    radius: 1.63,
+    clearance: 1.02,
+    nose: "embraer",
+    wing: [2.6, -4.0, -3.0, -5.2, -0.18],
+    tailSpan: 10.6,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.24],
+      x: 0.65,
+      radius: 0.72,
+      length: 3.15,
+    },
+    wingtip: "small",
+    gear: { mainAxles: 1, mainLegs: 2 },
+  }),
+  A320: profile({
+    radius: 1.98,
+    clearance: 1.06,
+    nose: "airbus",
+    wing: [3.5, -4.5, -3.0, -5.4, -0.2],
+    tailSpan: 12.45,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.255],
+      x: 1.15,
+      radius: 1.03,
+      length: 3.35,
+    },
+    wingtip: "sharklet",
+    gear: { mainAxles: 1, mainLegs: 2 },
+    model: {
+      kind: "attributed-gltf",
+      version: 1,
+      wheelbase: 12.64,
+      mainGearTrack: 7.59,
+      source:
+        "https://github.com/amvlab/aircraft-models/blob/main/models/A320_nologo.glb",
+      license: "CC BY 4.0",
+      credit: "amvlab",
+    },
+  }),
+  B738: profile({
+    radius: 1.88,
+    clearance: 1.0,
+    nose: "boeing",
+    wing: [4.0, -4.3, -3.2, -5.5, -0.22],
+    tailSpan: 14.35,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.255],
+      x: 1.35,
+      radius: 0.96,
+      length: 3.45,
+      flattened: true,
+    },
+    wingtip: "blended",
+    gear: { mainAxles: 1, mainLegs: 2 },
+  }),
+  A333: profile({
+    radius: 2.82,
+    clearance: 1.18,
+    nose: "airbus",
+    wing: [5.7, -7.8, -8.2, -11.0, -0.32],
+    tailSpan: 19.4,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.275],
+      x: 0.7,
+      radius: 1.42,
+      length: 5.15,
+    },
+    wingtip: "fence",
+    gear: { mainAxles: 2, mainLegs: 2 },
+  }),
+  A21N: profile({
+    radius: 1.98,
+    clearance: 1.06,
+    nose: "airbus",
+    wing: [2.2, -5.5, -4.0, -6.3, -0.2],
+    tailSpan: 12.45,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.255],
+      x: 0.35,
+      radius: 1.12,
+      length: 3.75,
+    },
+    wingtip: "sharklet",
+    gear: { mainAxles: 1, mainLegs: 2 },
+  }),
+  A223: profile({
+    radius: 1.78,
+    clearance: 1.04,
+    nose: "airbus",
+    wing: [3.1, -4.3, -3.1, -5.4, -0.2],
+    tailSpan: 12.3,
+    tail: "conventional",
+    engines: { kind: "jet", lanes: [0.25], x: 0.85, radius: 0.96, length: 3.8 },
+    wingtip: "small",
+    gear: { mainAxles: 1, mainLegs: 2 },
+  }),
+  DH8D: profile({
+    radius: 1.38,
+    clearance: 1.08,
+    nose: "turboprop",
+    wing: [4.0, -2.6, 3.0, -0.1, 0.76],
+    tailSpan: 9.6,
+    tail: "t",
+    engines: {
+      kind: "prop",
+      lanes: [0.27],
+      x: 2.35,
+      radius: 0.72,
+      length: 3.65,
+      blades: 6,
+    },
+    wingtip: "plain",
+    gear: { mainAxles: 1, mainLegs: 2, nacelleMounted: true },
+  }),
+  B77W: profile({
+    radius: 3.1,
+    clearance: 1.35,
+    nose: "boeing",
+    wing: [6.6, -8.8, -10.1, -13.6, -0.42],
+    tailSpan: 21.5,
+    tail: "conventional",
+    engines: { kind: "jet", lanes: [0.29], x: 0.35, radius: 1.65, length: 5.9 },
+    wingtip: "raked",
+    gear: { mainAxles: 3, mainLegs: 2 },
+  }),
+  B748: profile({
+    radius: 3.18,
+    clearance: 1.38,
+    nose: "boeing",
+    wing: [8.0, -8.1, -8.4, -12.3, -0.4],
+    tailSpan: 22.4,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.2, 0.365],
+      x: 0.4,
+      radius: 1.27,
+      length: 4.85,
+    },
+    wingtip: "raked",
+    gear: { mainAxles: 2, mainLegs: 4 },
+    upperDeck: true,
+  }),
+  A359: profile({
+    radius: 2.98,
+    clearance: 1.24,
+    nose: "airbus",
+    wing: [6.1, -8.2, -9.2, -12.5, -0.4],
+    tailSpan: 19.0,
+    tail: "conventional",
+    engines: {
+      kind: "jet",
+      lanes: [0.285],
+      x: 0.45,
+      radius: 1.5,
+      length: 5.45,
+    },
+    wingtip: "curved",
+    gear: { mainAxles: 2, mainLegs: 2 },
+  }),
+});
+
+export function aircraftVisual3d(typeId) {
+  const visual = aircraftVisuals3d[typeId];
+  if (!visual) throw new Error("Missing 3D aircraft profile: " + typeId);
+  return visual;
+}

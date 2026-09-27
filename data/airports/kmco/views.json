@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "tower": {
+    "featureId": "417344833",
+    "structureHeight": 105.2,
+    "viewpointHeight": 100,
+    "heightSource": {
+      "name": "Greater Orlando Aviation Authority airport history",
+      "url": "https://web.goaa.aero/airport-business/mcohistory/"
+    }
+  },
+  "cameras": [
+    {
+      "id": "airside-one-north",
+      "label": "Airside 1 North Ramp",
+      "shortLabel": "AS1",
+      "position": { "x": -600, "y": -835, "height": 32 },
+      "target": { "x": -600, "y": -1250, "height": 3 },
+      "fov": 46
+    },
+    {
+      "id": "airside-two-north",
+      "label": "Airside 2 North Ramp",
+      "shortLabel": "AS2",
+      "position": { "x": 620, "y": -825, "height": 32 },
+      "target": { "x": 650, "y": -1250, "height": 3 },
+      "fov": 46
+    },
+    {
+      "id": "airside-three-south",
+      "label": "Airside 3 South Ramp",
+      "shortLabel": "AS3",
+      "position": { "x": -620, "y": 380, "height": 32 },
+      "target": { "x": -620, "y": 800, "height": 3 },
+      "fov": 46
+    },
+    {
+      "id": "airside-four-south",
+      "label": "Airside 4 South Ramp",
+      "shortLabel": "AS4",
+      "position": { "x": 650, "y": 420, "height": 32 },
+      "target": { "x": 680, "y": 850, "height": 3 },
+      "fov": 46
+    },
+    {
+      "id": "terminal-c-north",
+      "label": "Terminal C North Apron",
+      "shortLabel": "TC",
+      "position": { "x": -900, "y": 1300, "height": 32 },
+      "target": { "x": -620, "y": 1600, "height": 3 },
+      "fov": 46
+    },
+    {
+      "id": "east-runways",
+      "label": "East Runway Complex",
+      "shortLabel": "EAST",
+      "position": { "x": 1020, "y": 620, "height": 20 },
+      "target": { "x": 1860, "y": 300, "height": 2 },
+      "fov": 46
+    }
+  ]
+}

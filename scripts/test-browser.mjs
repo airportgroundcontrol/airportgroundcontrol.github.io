@@ -9,6 +9,8 @@ const files = new Map([
   ["/index.html", ["index.html", "text/html"]],
   ["/style.css", ["style.css", "text/css"]],
   ["/app.js", ["app.js", "text/javascript"]],
+  ["/3d.html", ["3d.html", "text/html"]],
+  ["/style-3d.css", ["style-3d.css", "text/css"]],
 ]);
 for (const name of await readdir(new URL("../dist/data/", import.meta.url))) {
   if (/^[a-z0-9_-]+\.json$/i.test(name))
@@ -54,6 +56,7 @@ try {
         "aircraft-browser.mjs",
         "aircraft-flow-browser.mjs",
         "random-traffic-browser.mjs",
+        "tower-browser.mjs",
       ];
   for (const suite of suites) {
     console.log(`\nRunning ${suite} at ${baseURL}`);

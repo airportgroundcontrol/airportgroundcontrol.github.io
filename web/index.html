@@ -14,10 +14,59 @@
       type="image/svg+xml"
       href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23181d21'/%3E%3Cpath d='M5 20 14 14 14 6 18 6 18 14 27 20 27 23 18 20 18 25 21 27 11 27 14 25 14 20 5 23Z' fill='%23f5d45a'/%3E%3C/svg%3E"
     />
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css" />
+    <link rel="stylesheet" href="style-3d.css" />
   </head>
   <body>
     <main class="workspace">
+      <section
+        id="tower-panel"
+        class="tower-panel"
+        aria-label="3D tower view"
+        hidden
+      >
+        <canvas id="tower-scene" aria-label="Airport tower view"></canvas>
+        <div id="tower-labels" aria-hidden="true"></div>
+        <div class="tower-reticle" aria-hidden="true"></div>
+        <div class="tower-window-frame left" aria-hidden="true"></div>
+        <div class="tower-window-frame right" aria-hidden="true"></div>
+        <div class="tower-window-sill" aria-hidden="true"></div>
+        <div id="camera-windows" class="camera-windows"></div>
+        <div class="tower-tools">
+          <button
+            id="tower-cameras"
+            title="Airport cameras"
+            aria-label="Airport cameras"
+            aria-haspopup="menu"
+            aria-expanded="false"
+          >
+            <i data-lucide="cctv"></i></button
+          ><button
+            id="tower-binoculars"
+            title="Binocular zoom"
+            aria-label="Binocular zoom"
+          >
+            <i data-lucide="scan-search"></i></button
+          ><button
+            id="tower-reset"
+            title="Reset tower view"
+            aria-label="Reset tower view"
+          >
+            <i data-lucide="rotate-ccw"></i>
+          </button>
+        </div>
+        <div id="camera-menu" class="camera-menu" role="menu" hidden></div>
+      </section>
+      <div
+        id="view-resizer"
+        class="view-resizer"
+        role="separator"
+        aria-label="Resize 2D control map"
+        aria-orientation="horizontal"
+        tabindex="0"
+      >
+        <span></span>
+      </div>
       <section class="map-panel" aria-label="Airport ground movement map">
         <canvas id="map" aria-label="Airport map" tabindex="0"></canvas>
         <div class="map-heading">
@@ -92,6 +141,10 @@
         <span class="icao"></span><span class="airport-name"></span
         ><i data-lucide="chevron-down"></i>
       </button>
+      <div id="view-toggle" class="view-toggle" aria-label="Display mode">
+        <button data-view="2d" class="active" aria-pressed="true">2D</button
+        ><button data-view="3d" aria-pressed="false">3D</button>
+      </div>
       <div class="scoreboard" aria-label="Operation statistics">
         <div><span>MOVEMENTS</span><strong id="movements">0</strong></div>
         <div><span>SCORE</span><strong id="score">0</strong></div>
@@ -163,6 +216,13 @@
       <div id="airport-choices"></div>
       <p class="catalog-note"></p>
       <a download>Airport data</a>
+      <p class="asset-credit">
+        A320 model:
+        <a href="https://github.com/amvlab/aircraft-models">amvlab</a>
+        (<a href="https://creativecommons.org/licenses/by/4.0/"
+          >CC BY 4.0</a
+        >), modified for Ground Control.
+      </p>
     </dialog>
     <dialog id="restart-dialog" aria-labelledby="reset-heading">
       <h2 id="reset-heading">Delete saved game?</h2>

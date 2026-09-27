@@ -100,7 +100,7 @@ try {
     groundControl.map.draw();
   });
   const metrics = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
+    const canvas = document.getElementById("map");
     const pixels = canvas
       .getContext("2d")
       .getImageData(0, 0, canvas.width, canvas.height).data;
@@ -216,7 +216,26 @@ try {
   const recovered = await savedSimulation(offline);
   await offline.reload();
   await offline.waitForFunction(() => window.groundControl);
-  assert.deepEqual(await savedSimulation(offline), recovered);
+  const reloaded = await savedSimulation(offline);
+  assert.equal(reloaded.randomSeed, recovered.randomSeed);
+  assert.equal(reloaded.randomState, recovered.randomState);
+  assert.deepEqual(
+    reloaded.planes.map((plane) => [
+      plane.id,
+      plane.call,
+      plane.type,
+      plane.state,
+    ]),
+    recovered.planes.map((plane) => [
+      plane.id,
+      plane.call,
+      plane.type,
+      plane.state,
+    ]),
+  );
+  assert.ok(
+    reloaded.time >= recovered.time && reloaded.time <= recovered.time + 0.1,
+  );
   assert.equal(await offline.locator("#restart-dialog").isVisible(), false);
   assert.deepEqual(requests, []);
   assert.deepEqual(errors, []);

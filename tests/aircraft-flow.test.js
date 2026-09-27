@@ -34,11 +34,11 @@ test("uncleared arrivals move continuously, count down, go around once and leave
     start = { ...p };
   assert.equal(Math.round(sim.arrivalETA(p)), 360);
   advance(sim, 10);
-  assert.ok(distance(start, p) > 600);
+  assert.ok(distance(start, p) > 500);
   assert.ok(Math.abs(sim.arrivalETA(p) - 350) < 0.01);
   roundtrip(sim);
   until(sim, p, "goaround");
-  assert.equal(sim.score, -25);
+  assert.equal(sim.score, -sim.scenario.scoring.goAround);
   assert.equal(sim.incidents, 1);
   assert.equal(sim.runwayOwner, null);
   roundtrip(sim);
@@ -46,7 +46,7 @@ test("uncleared arrivals move continuously, count down, go around once and leave
   advance(sim, 2);
   assert.ok(distance(missed, p) > 100);
   until(sim, p, "done");
-  assert.equal(sim.score, -25);
+  assert.equal(sim.score, -sim.scenario.scoring.goAround);
   assert.equal(sim.completed, 0);
 });
 
@@ -61,14 +61,17 @@ test("successive approaches are spaced by ETA even with different aircraft speed
 test("unavailable stands or an occupied runway never freeze an approaching aircraft", () => {
   const sim = setup(),
     p = sim.planes[3];
-  sim.spawnDeparture("1", "FULL100", "A333");
-  sim.spawnDeparture("15", "FULL200", "A333");
+  let call = 100;
+  while (sim.freeStands(p).length) {
+    const stand = sim.freeStands(p)[0];
+    sim.spawnDeparture(stand.id, `FULL${call++}`, "E190");
+  }
   assert.match(
     sim.command(p.id, "land").message,
     /No available compatible stand/,
   );
   until(sim, p, "goaround");
-  assert.equal(sim.score, -25);
+  assert.equal(sim.score, -sim.scenario.scoring.goAround);
   const other = setup(),
     incoming = other.planes[3];
   other.runwayOwner = 1;
@@ -218,20 +221,19 @@ test("an arrival that loses anticipated separation goes around with a controller
   assert.ok(sim.command(departure.id, "lineup").ok);
   until(sim, departure, "linedup");
   until(sim, arrival, "goaround");
-  assert.equal(sim.score, -45);
+  assert.equal(
+    sim.score,
+    -sim.scenario.scoring.goAround - sim.scenario.scoring.conflict,
+  );
   assert.equal(sim.incidents, 1);
 });
 
-test("heavy aircraft rejects the short exit; each type decelerates before its selected exit", () => {
-  for (const type of ["AT72", "E190", "A320", "B738", "A333"]) {
+test("each London City aircraft type decelerates before its selected exit", () => {
+  for (const type of ["AT72", "DH8D", "E190", "A223"]) {
     const sim = setup();
     sim.planes = [];
     sim.spawnArrival("TEST100", type);
     const p = sim.planes[0];
-    if (type === "A333") {
-      assert.equal(sim.command(p.id, "land", { exitId: "midfield" }).ok, false);
-      assert.equal(sim.runwayOwner, null);
-    }
     assert.ok(sim.command(p.id, "land").ok, type);
     for (let i = 0; i < 15000 && !p.vacating; i++) sim.tick(0.05);
     assert.equal(p.vacating, true, type);
@@ -272,18 +274,18 @@ test("curves retain graph nodes and stay within the configured centerline corrid
 test("curved-route saves resume mid-turn and reject tampered curve points", () => {
   const sim = setup(),
     p = sim.planes[1];
-  assert.ok(sim.command(p.id, "pushback", { pushbackOption: "nose-east" }).ok);
-  advance(sim, 35);
+  assert.ok(sim.command(p.id, "pushback").ok);
+  advance(sim, 1);
   const restored = roundtrip(sim);
-  advance(sim, 3);
-  advance(restored, 3);
+  advance(sim, 1);
+  advance(restored, 1);
   assert.deepEqual(captureSimulation(restored), captureSimulation(sim));
   const broken = structuredClone(captureSimulation(sim));
   const sample = broken.planes[1].route.find((n) => n.edgeFrom);
   sample.x += 100;
   assert.equal(restoreSimulation(setup(), broken), false);
   until(sim, p, "disconnect");
-  assert.equal(p.node, "5715751981");
+  assert.equal(p.node, sim.stands.get("8").exit);
   roundtrip(sim);
   until(sim, p, "ready");
   assert.equal(p.pushbackPath, null);
@@ -336,13 +338,32 @@ test("self-maneuvering requires a configured stand/type option and skips tug dis
 });
 
 test("pushback reservations reject an intersecting second maneuver", () => {
-  const sim = setup();
-  sim.planes = sim.planes.filter((p) => p.id === 1);
-  sim.spawnDeparture("1", "TEST200", "E190");
+  const input = structuredClone(syntheticInput);
+  input.operations.pushbacks = {
+    A1: [
+      {
+        id: "tow-a",
+        label: "Tow A",
+        mode: "tug",
+        path: ["stand-a", "apron", "mid"],
+      },
+    ],
+    B2: [
+      {
+        id: "tow-b",
+        label: "Tow B",
+        mode: "tug",
+        path: ["stand-b", "mid", "apron"],
+      },
+    ],
+  };
+  const sim = setup(createAirportPackage(input));
+  sim.planes = sim.planes.filter((p) => p.direction === "departure");
+  sim.spawnDeparture("B2", "TEST200", "E190");
   const other = sim.planes.at(-1);
-  assert.ok(sim.command(1, "pushback", { pushbackOption: "nose-north" }).ok);
+  assert.ok(sim.command(1, "pushback", { pushbackOption: "tow-a" }).ok);
   assert.equal(
-    sim.command(other.id, "pushback", { pushbackOption: "nose-south" }).ok,
+    sim.command(other.id, "pushback", { pushbackOption: "tow-b" }).ok,
     false,
   );
 });

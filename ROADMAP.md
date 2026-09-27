@@ -6,7 +6,7 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 
 ## Next: Foundation for Expansion
 
-- [x] Extract airport/scenario configuration: initial stands, active runway, holding points, curated arrival exits, schedules, scoring, map framing and UI/radio text. Shared engine/map/UI/importer contain no Edinburgh/24/D1 assumptions; synthetic-airport cycles and browser tests verify this.
+- [x] Extract airport/scenario configuration: initial stands, active runway, holding points, curated arrival exits, schedules, scoring, map framing and UI text. Shared engine/map/UI/importer contain no bundled-airport assumptions; synthetic-airport cycles and browser tests verify this.
 - [x] Extract GameSession for commands/events, simulation pacing, restore/save/restart and disposal; UI and integration commands use it.
 - [x] Automatic current-format local persistence with validated reload and explicit top-bar delete/reset. Legacy migration and manual game transfer explicitly declined by the user; format 2 only.
 - [x] Introduce per-runway assignment, occupancy, wake state and clearance handling for multiple active runways. Opposite ends share physical occupancy; declared hold-to-hold crossings reserve that pavement; single-runway behavior and reload compatibility remain covered.
@@ -21,8 +21,8 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 ## Later Product Work
 
 - [x] Smooth manual Hold braking, low-speed final parking and centerline-corridor cubic taxi paths. Full landing-gear/turn-radius feasibility is still part of physical-clearance work below.
-- [x] Directional pushback choices with previews (R), maneuver reservations through tug release, and explicitly configured self-maneuver support. Edinburgh directional choices cover stands 1, 3, 8 and 20; other stands retain their original lead-out. Self-maneuvering is tested synthetically, not enabled without real stand data.
-- [x] Two curated Edinburgh arrival-exit paths, braking-distance eligibility and exit-speed control; suitable exits are selectable before landing clearance.
+- [x] Directional departure-movement choices with previews (R), maneuver reservations through tug release, and explicitly configured self-maneuver support. London City's 15 nose-out stands use curated forward taxi paths; Frankfurt retains straight-back stand paths.
+- [x] Curated arrival-exit paths in both London City runway directions, braking-distance eligibility and exit-speed control; suitable exits are selectable before landing clearance.
 - [x] Continuously moving approaches, per-flight ETA, time-spaced arrivals, off-map indicators, visible go-arounds and a single score penalty for each missed landing clearance. Go-arounds leave the control area rather than freezing or teleporting back into a queue.
 - [x] Anticipated runway separation for landing and takeoff: future threshold slots, performance/heavy-wake margins, continuously monitored forecasts, penalized separation-loss go-arounds, and selectable rolling departures from the runway hold.
 - [ ] Physical clearance: landing-gear/minimum-radius feasibility, swept wing/tail envelopes, jet-blast zones and clearer deadlock intervention. Current curves protect the aircraft reference point only, not its complete footprint.
@@ -30,7 +30,7 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 - [ ] Verified airport restrictions: replace labeled game assumptions with sourced stand, pavement and maneuvering limits; expand curated pushback options to other stands.
 
 - [x] Aircraft catalog and distinct silhouettes, stand/route eligibility, adjacent reservations, game-tuned acceleration/braking/turn speeds, tug disconnection and size-based separation buffers. See [aircraft realism plan](AIRCRAFT_REALISM_PLAN.md) for the exact scope.
-- [x] Curate and add FRA as the second real-airport package: licensed OSM geometry, 17 connected playable stands, all four physical runways, both operating directions, type-dependent arrival exits, airport-specific fleet limits, persistence and desktop/mobile/offline browser QA.
+- [x] Curate and add FRA as a real-airport package: licensed OSM geometry, 53 connected playable stands, all four physical runways, both operating directions, type-dependent arrival exits, airport-specific fleet limits, persistence and desktop/mobile/offline browser QA.
 - [ ] Richer aircraft behavior, aircraft-specific separation and ground movement characteristics.
 - [ ] Dynamic weather, visibility and operating scenarios that influence runway suitability and capacity.
 - [ ] Service vehicles and more complete ground operations.
@@ -39,7 +39,7 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 
 - [x] Fixed 0.05-second simulation timestep across playback speeds; a saved seed and generator position preserve deterministic continuation.
 - [x] Seeded stochastic traffic: varied initial counts, callsigns, weighted types and compatible stands; bounded schedule, approach and turnaround variation. New games/restarts draw fresh seeds; reload resumes the exact sequence.
-- [x] Aircraft rotation traffic: six-minute inbound planning window, two-minute approach spacing, airline-scale type-dependent turnarounds, and no recurring gate-side aircraft creation after the opening roster.
+- [x] Aircraft rotation traffic: airport-configured inbound planning windows, approach spacing, airline-scale type-dependent turnarounds, and no recurring gate-side aircraft creation after the opening roster.
 - [ ] Seed selection/sharing, tick-stamped command trace and replay controls.
 - [ ] Profile higher traffic loads before introducing a worker or spatial index.
 - [x] Exclusive browser writer lock per airport; no unsafe storage-lease fallback. Unsupported locks use volatile play.
@@ -48,10 +48,10 @@ Implementation order, module boundaries, save migrations and phase acceptance cr
 
 ## Already Delivered
 
-- [x] Archived v1 save/continuation fixtures, visual references and performance baseline.
+- [x] Visual references and a performance baseline.
 - [x] One-command verification with owned temporary browser server, configurable outputs and offline checks.
 - [x] Authored UI/data outside `dist/`; clean reproducible static/offline builds.
-- [x] Browser-only Edinburgh game on real OpenStreetMap ground geometry.
+- [x] Browser-only London City and Frankfurt gameplay on real OpenStreetMap ground geometry, in 2D and 3D.
 - [x] Endless play, dark full-screen map, direct map-based aircraft control and top-bar KPIs. The former right panel and radio history were removed by request.
 - [x] Compact aircraft action menus and keyboard shortcuts.
 - [x] Request/status groups with gentle request pulses and reduced-motion support.

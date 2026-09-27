@@ -11,6 +11,8 @@ const aircraftColors = {
 
 export const aircraftStatusColor = (aircraft) => {
   if (["gate", "parked"].includes(aircraft.state)) return aircraftColors.stand;
+  if (aircraft.state === "pushback" && aircraft.pushbackMode === "self")
+    return aircraftColors.taxi;
   if (["pushback", "disconnect"].includes(aircraft.state))
     return aircraftColors.pushback;
   if (["approach", "landing", "goaround"].includes(aircraft.state))
@@ -25,7 +27,14 @@ export const formatArrivalETA = (seconds) => {
 };
 
 export class AirportMap {
-  constructor(canvas, sim, onSelect, onWaypoint, onDismiss = () => {}) {
+  constructor(
+    canvas,
+    sim,
+    onSelect,
+    onWaypoint,
+    onDismiss = () => {},
+    onFocus = () => {},
+  ) {
     this.canvas = canvas;
     this.ctx = canvas.getContext("2d");
     this.staticCanvas = document.createElement("canvas");
@@ -43,6 +52,10 @@ export class AirportMap {
     this.onSelect = onSelect;
     this.onWaypoint = onWaypoint;
     this.onDismiss = onDismiss;
+    this.onFocus = onFocus;
+    this.viewpoint = null;
+    this.cameraViewpoints = () => [];
+    this.onCamera = () => {};
     this.pointers = new Map();
     new ResizeObserver(() => this.resize()).observe(canvas);
     this.bind();
@@ -144,6 +157,35 @@ export class AirportMap {
     this.camera.x += old.x - now.x;
     this.camera.y += old.y - now.y;
   }
+  aircraftAt(x, y) {
+    const point = { x, y },
+      aircraft = this.sim.planes
+        .filter((plane) => plane.state !== "done")
+        .reduce(
+          (nearest, candidate) =>
+            !nearest ||
+            distance(this.aircraftScreen(candidate), point) <
+              distance(this.aircraftScreen(nearest), point)
+              ? candidate
+              : nearest,
+          null,
+        );
+    return aircraft &&
+      distance(this.aircraftScreen(aircraft), point) <
+        Math.max(
+          23,
+          aircraftPixels(aircraft.type, this.camera.zoom).length / 2 + 5,
+        )
+      ? aircraft
+      : null;
+  }
+  cameraAt(x, y) {
+    return (
+      this.cameraViewpoints().find(
+        (camera) => distance(this.screen(camera), { x, y }) <= 14,
+      ) || null
+    );
+  }
   bind() {
     const c = this.canvas;
     c.addEventListener(
@@ -197,26 +239,15 @@ export class AirportMap {
         const r = c.getBoundingClientRect(),
           x = e.clientX - r.left,
           y = e.clientY - r.top;
-        const plane = this.sim.planes
-          .filter((p) => p.state !== "done")
-          .reduce(
-            (nearest, candidate) =>
-              !nearest ||
-              distance(this.aircraftScreen(candidate), { x, y }) <
-                distance(this.aircraftScreen(nearest), { x, y })
-                ? candidate
-                : nearest,
-            null,
-          );
-        if (
-          plane &&
-          distance(this.aircraftScreen(plane), { x, y }) <
-            Math.max(
-              23,
-              aircraftPixels(plane.type, this.camera.zoom).length / 2 + 5,
-            )
-        ) {
+        const plane = this.aircraftAt(x, y);
+        if (plane) {
           this.onSelect(plane.id, { x, y });
+          return;
+        }
+        const camera = this.cameraAt(x, y);
+        if (camera) {
+          this.onDismiss();
+          this.onCamera(camera.id);
           return;
         }
         this.onDismiss();
@@ -236,24 +267,15 @@ export class AirportMap {
       e.preventDefault();
       const r = c.getBoundingClientRect(),
         point = { x: e.clientX - r.left, y: e.clientY - r.top };
-      const p = this.sim.planes
-        .filter((plane) => plane.state !== "done")
-        .reduce(
-          (nearest, candidate) =>
-            !nearest ||
-            distance(this.aircraftScreen(candidate), point) <
-              distance(this.aircraftScreen(nearest), point)
-              ? candidate
-              : nearest,
-          null,
-        );
-      if (
-        p &&
-        distance(this.aircraftScreen(p), point) <
-          Math.max(23, aircraftPixels(p.type, this.camera.zoom).length / 2 + 5)
-      )
-        this.onSelect(p.id, point);
+      const aircraft = this.aircraftAt(point.x, point.y);
+      if (aircraft) this.onSelect(aircraft.id, point);
       else this.onDismiss();
+    });
+    c.addEventListener("dblclick", (e) => {
+      e.preventDefault();
+      const r = c.getBoundingClientRect(),
+        aircraft = this.aircraftAt(e.clientX - r.left, e.clientY - r.top);
+      if (aircraft) this.onFocus(aircraft.id);
     });
     c.addEventListener("pointercancel", (e) =>
       this.pointers.delete(e.pointerId),
@@ -330,6 +352,108 @@ export class AirportMap {
     c.fillStyle = color;
     c.fillText(text, x, y);
     c.restore();
+  }
+  drawViewpoint(viewpoint) {
+    if (!viewpoint) return;
+    const c = this.ctx,
+      origin = this.screen(viewpoint),
+      range = Math.min(
+        180,
+        Math.max(90, Math.min(this.width, this.height) * 0.3),
+      ),
+      left = viewpoint.yaw - viewpoint.horizontalFov / 2,
+      right = viewpoint.yaw + viewpoint.horizontalFov / 2,
+      ray = (angle, length = range) => ({
+        x: origin.x + Math.sin(angle) * length,
+        y: origin.y + Math.cos(angle) * length,
+      }),
+      leftPoint = ray(left),
+      rightPoint = ray(right),
+      centerPoint = ray(viewpoint.yaw, range + 10);
+    c.save();
+    c.beginPath();
+    c.moveTo(origin.x, origin.y);
+    c.lineTo(leftPoint.x, leftPoint.y);
+    c.lineTo(rightPoint.x, rightPoint.y);
+    c.closePath();
+    c.fillStyle = "#8fc9ff1a";
+    c.fill();
+    c.strokeStyle = "#8fc9ff80";
+    c.lineWidth = 1;
+    c.stroke();
+    c.setLineDash([5, 5]);
+    c.beginPath();
+    c.moveTo(origin.x, origin.y);
+    c.lineTo(centerPoint.x, centerPoint.y);
+    c.strokeStyle = "#b9dcffb3";
+    c.stroke();
+    c.setLineDash([]);
+    c.beginPath();
+    c.arc(origin.x, origin.y, 8, 0, Math.PI * 2);
+    c.fillStyle = "#11161be8";
+    c.fill();
+    c.strokeStyle = "#b9dcff";
+    c.lineWidth = 2;
+    c.stroke();
+    c.beginPath();
+    c.moveTo(origin.x - 4, origin.y + 7);
+    c.lineTo(origin.x - 7, origin.y + 15);
+    c.moveTo(origin.x + 4, origin.y + 7);
+    c.lineTo(origin.x + 7, origin.y + 15);
+    c.stroke();
+    c.font = "700 8px ui-monospace, monospace";
+    c.textAlign = "center";
+    c.fillStyle = "#b9dcff";
+    c.fillText("TWR", origin.x, origin.y - 13);
+    c.restore();
+  }
+  drawCameraViewpoints(cameras) {
+    const c = this.ctx;
+    for (const camera of cameras) {
+      const origin = this.screen(camera),
+        range = 76,
+        ray = (angle) => ({
+          x: origin.x + Math.sin(angle) * range,
+          y: origin.y + Math.cos(angle) * range,
+        });
+      c.save();
+      if (camera.active) {
+        const left = ray(camera.yaw - camera.horizontalFov / 2),
+          right = ray(camera.yaw + camera.horizontalFov / 2);
+        c.beginPath();
+        c.moveTo(origin.x, origin.y);
+        c.lineTo(left.x, left.y);
+        c.lineTo(right.x, right.y);
+        c.closePath();
+        c.fillStyle = "#e7c86c17";
+        c.fill();
+        c.strokeStyle = "#e7c86c70";
+        c.lineWidth = 1;
+        c.stroke();
+      }
+      c.translate(origin.x, origin.y);
+      c.rotate(camera.yaw);
+      c.beginPath();
+      c.rect(-6, -5, 12, 10);
+      c.moveTo(6, -3);
+      c.lineTo(11, 0);
+      c.lineTo(6, 3);
+      c.closePath();
+      c.fillStyle = camera.active ? "#e7c86c" : "#20252aeb";
+      c.fill();
+      c.strokeStyle = camera.active ? "#fff0ae" : "#b9c0c5";
+      c.lineWidth = 1.5;
+      c.stroke();
+      c.restore();
+      this.label(
+        camera.shortLabel,
+        origin.x,
+        origin.y - 11,
+        camera.active ? "#f1d47a" : "#b9c0c5",
+        8,
+        "#171a1de8",
+      );
+    }
   }
   drawStaticLayer() {
     const liveContext = this.ctx,
@@ -674,5 +798,7 @@ export class AirportMap {
           8,
         );
     }
+    this.drawCameraViewpoints(this.cameraViewpoints());
+    this.drawViewpoint(this.viewpoint?.());
   }
 }

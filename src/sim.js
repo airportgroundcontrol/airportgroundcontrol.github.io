@@ -1286,9 +1286,10 @@ export class GroundSim {
       if (p.state !== "gate")
         return reject("Flight is not ready for pushback.");
       const s = this.stands.get(p.stand);
-      const option = this.pushbackOptions(p).find(
-        (o) => o.id === (pushbackOption || "standard"),
-      );
+      const options = this.pushbackOptions(p),
+        option = pushbackOption
+          ? options.find((candidate) => candidate.id === pushbackOption)
+          : options.find((candidate) => candidate.default) || options[0];
       if (!option) return reject("Choose an available pushback option.");
       const points = option.path.map((n) => this.nodes.get(n));
       {
@@ -1622,7 +1623,9 @@ export class GroundSim {
       this.nextArrival += this.trafficInterval("arrival");
     }
     const active = this.planes.filter(
-      (p) => !["done", "approach", "goaround"].includes(p.state) && !p.airborne,
+      (p) =>
+        !["done", "approach", "goaround", "gate", "parked"].includes(p.state) &&
+        !p.airborne,
     );
     for (const p of this.planes) {
       {

@@ -38,7 +38,7 @@ try {
       groundControl.map.label = original;
       groundControl.map.badge = originalBadge;
       const label = labels.find(({ text }) =>
-        text.startsWith("KLM927 / A333 / ETA "),
+        text.startsWith("KLM927 / E190 / ETA "),
       );
       const runwayBadge = `RWY ${
         groundControl.sim.runwayFor(groundControl.sim.planes[3]).label
@@ -68,7 +68,7 @@ try {
   );
   assert.ok(eta > 0);
   const after = await page.evaluate(() => ({ ...groundControl.sim.planes[3] }));
-  assert.ok(Math.hypot(after.x - before.x, after.y - before.y) > 600);
+  assert.ok(Math.hypot(after.x - before.x, after.y - before.y) > 500);
   const marker = await page.evaluate(() =>
     groundControl.map.aircraftScreen(groundControl.sim.planes[3]),
   );
@@ -79,24 +79,19 @@ try {
     await page
       .locator("#exit-select option")
       .evaluateAll((els) => els.map((e) => e.value)),
-    ["runway-end-A"],
+    ["B"],
   );
   await page.keyboard.press("Escape");
   await page.screenshot({ path: artifact("moving-arrivals-desktop.png") });
 
-  // The directional picker uses the same dispatch path as shortcuts/default pushback.
+  // The departure shortcut uses the same dispatch path as the action menu.
   await page.evaluate(() => groundControl.select(2));
-  await page.keyboard.press("r");
-  await page
-    .getByLabel("Pushback direction", { exact: true })
-    .selectOption("nose-east");
-  await page.screenshot({ path: artifact("pushback-direction-desktop.png") });
-  await page.locator("#aircraft-menu").focus();
-  await page.keyboard.press("Enter");
+  await page.keyboard.press("p");
+  await page.screenshot({ path: artifact("departure-movement-desktop.png") });
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
   assert.equal(
-    await page.evaluate(() => groundControl.sim.planes[1].pushbackOption),
-    "nose-east",
+    await page.evaluate(() => groundControl.sim.planes[1].state),
+    "pushback",
   );
 
   await page.evaluate(() => {
@@ -127,13 +122,13 @@ try {
     await page.evaluate(() => groundControl.sim.planes[3].state),
     "goaround",
   );
-  assert.equal(await page.evaluate(() => groundControl.sim.score), -25);
+  assert.equal(await page.evaluate(() => groundControl.sim.score), -30);
   await page.evaluate(() => groundControl.session.save());
   await page.reload();
   await page.waitForFunction(
     () => window.groundControl?.sim.planes[3].state === "goaround",
   );
-  assert.equal(await page.evaluate(() => groundControl.sim.score), -25);
+  assert.equal(await page.evaluate(() => groundControl.sim.score), -30);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForFunction(() => groundControl.map.width === innerWidth);
@@ -187,13 +182,13 @@ try {
   await page.evaluate(() =>
     groundControl.select(groundControl.sim.planes.at(-1).id),
   );
-  await page.locator("#exit-select").selectOption("midfield");
+  await page.locator("#exit-select").selectOption("B");
   await page.locator("#aircraft-menu").focus();
   await page.keyboard.press("l");
   assert.equal(await page.locator("#aircraft-menu").isVisible(), false);
   assert.equal(
     await page.evaluate(() => groundControl.sim.planes.at(-1).exitLabel),
-    "midfield",
+    "B",
   );
 
   const rollingContext = await browser.newContext();
@@ -270,7 +265,7 @@ try {
   await rollingContext.close();
   assert.deepEqual(errors, []);
   console.log(
-    "PASS: moving approaches, anticipated runway slots, rolling-departure shortcut/reload, live ETA, directional pushback, exit choice and automatic go-around penalties.",
+    "PASS: moving approaches, anticipated runway slots, rolling-departure shortcut/reload, live ETA, departure shortcut, exit choice and automatic go-around penalties.",
   );
 } finally {
   await browser.close();

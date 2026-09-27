@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "basis": "game-assumptions",
+  "departureWakeSeconds": { "M": { "M": 0, "H": 0 } },
+  "note": "Curated game limits on real OSM geometry, not verified London City stand or pavement restrictions. No operational use.",
+  "departureTypes": ["E190", "E190", "A223", "A223", "DH8D", "AT72"],
+  "arrivalTypes": ["E190", "E190", "A223", "A223", "DH8D", "AT72"],
+  "initialTypes": {},
+  "standGroups": [
+    {
+      "stands": ["3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "21", "22", "23", "24"],
+      "maxLength": 40,
+      "maxWingspan": 36
+    }
+  ],
+  "exclusionGroups": [["3", "4"], ["4", "5"], ["5", "6"], ["6", "7"], ["7", "8"], ["8", "9"], ["9", "10"], ["10", "11"], ["11", "12"], ["12", "13"], ["21", "22"], ["22", "23"], ["23", "24"]],
+  "defaultRouteTypes": ["AT72", "DH8D", "E190", "A223"],
+  "routeRules": []
+}

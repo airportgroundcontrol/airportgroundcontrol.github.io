@@ -1,0 +1,49 @@
+{
+  "id": "EGLC",
+  "iata": "LCY",
+  "name": "London City Airport",
+  "country": "United Kingdom",
+  "center": [0.055, 51.505],
+  "source": {
+    "name": "OpenStreetMap contributors",
+    "url": "https://www.openstreetmap.org/way/121158889",
+    "downloaded": "2026-09-27",
+    "license": "ODbL 1.0"
+  },
+  "standIds": [
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "21",
+    "22",
+    "23",
+    "24"
+  ],
+  "noseOutStandIds": [
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    "10",
+    "11",
+    "12",
+    "13",
+    "21",
+    "22",
+    "23",
+    "24"
+  ],
+  "operations": "operations.json",
+  "scenario": "scenario.json"
+}

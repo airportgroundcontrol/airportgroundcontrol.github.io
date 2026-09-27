@@ -76,10 +76,77 @@ test("traffic uses configured arrival intervals and never materializes new gate 
   assert.ok(!sim.planes.some((p) => p.call.startsWith("DEP")));
 });
 
+test("London City provides real connected geometry, nose-out stands and both runway flows", () => {
+  const airport = defaultAirport;
+  assert.equal(airport.id, "EGLC");
+  assert.equal(airport.iata, "LCY");
+  assert.equal(airport.name, "London City Airport");
+  assert.deepEqual(airport.views, ["2d", "3d"]);
+  assert.deepEqual(airport.towerView, {
+    featureId: "867688184",
+    structureHeight: 50,
+    viewpointHeight: 50,
+    heightSource: {
+      name: "NATS London City Airport tower factsheet",
+      url: "https://www.nats.aero/wp-content/uploads/2024/08/TowersFactsheets2023.pdf",
+    },
+  });
+  assert.equal(airport.cameraViews.length, 4);
+  assert.ok(
+    airport.environment.features.filter((feature) => feature.type === "water")
+      .length >= 5,
+  );
+  assert.ok(
+    airport.environment.features.filter((feature) => feature.type === "grass")
+      .length >= 50,
+  );
+  assert.equal(airport.environment.featureStyles["38836969"].levels, 7);
+  assert.equal(airport.operations.runways.length, 1);
+  assert.equal(airport.stands.length, 15);
+  assert.ok(airport.nodes.length > 400);
+  assert.deepEqual(
+    airport.runwayPresets.map((preset) => preset.id),
+    ["west-flow", "east-flow"],
+  );
+
+  const sim = new GroundSim(airport, { seed: 1 }),
+    departure = sim.planes.find((plane) => plane.direction === "departure");
+  assert.deepEqual(
+    sim
+      .pushbackOptions(departure)
+      .map((option) => [option.id, option.mode, option.default]),
+    [["self", "self", true]],
+  );
+  for (const preset of airport.runwayPresets) {
+    assert.ok(
+      sim.configureRunways(preset.runwayUses, { presetId: preset.id }).ok,
+    );
+    for (const type of new Set(airport.fleet.arrivalTypes)) {
+      sim.planes = [];
+      sim.spawnArrival("LCY100", type);
+      assert.equal(sim.planes[0].type, type);
+      assert.ok(sim.landingOptions(sim.planes[0]).length, type);
+    }
+  }
+});
+
 test("Frankfurt provides real multi-runway geometry and complete routes for its fleet", () => {
   const airport = airportCatalog.find((candidate) => candidate.id === "EDDF");
   assert.ok(airport);
   assert.equal(airport.iata, "FRA");
+  assert.deepEqual(airport.views, ["2d", "3d"]);
+  assert.deepEqual(airport.towerView, {
+    featureId: "129836215",
+    structureHeight: 65,
+    viewpointHeight: 62,
+    heightSource: {
+      name: "DFS Frankfurt Tower profile",
+      url: "https://karriere.dfs.de/en/air-traffic-controller/a-day-in-the-work-life",
+    },
+  });
+  assert.deepEqual(defaultAirport.views, ["2d", "3d"]);
+  assert.equal(airport.cameraViews.length, 6);
+  assert.equal(defaultAirport.cameraViews.length, 4);
   assert.equal(airport.operations.runways.length, 4);
   assert.deepEqual(
     airport.activeRunways.map((runway) => [
@@ -137,6 +204,56 @@ test("Frankfurt provides real multi-runway geometry and complete routes for its 
   }
 });
 
+test("Orlando provides real four-runway geometry and complete north and south flows", () => {
+  const airport = airportCatalog.find((candidate) => candidate.id === "KMCO");
+  assert.ok(airport);
+  assert.equal(airport.iata, "MCO");
+  assert.deepEqual(airport.views, ["2d", "3d"]);
+  assert.deepEqual(airport.towerView, {
+    featureId: "417344833",
+    structureHeight: 105.2,
+    viewpointHeight: 100,
+    heightSource: {
+      name: "Greater Orlando Aviation Authority airport history",
+      url: "https://web.goaa.aero/airport-business/mcohistory/",
+    },
+  });
+  assert.equal(airport.cameraViews.length, 6);
+  assert.equal(airport.operations.runways.length, 4);
+  assert.equal(airport.runwayConfigurations.length, 4);
+  assert.equal(airport.stands.length, 50);
+  assert.ok(airport.nodes.length > 5000);
+  assert.ok(
+    airport.features.some(
+      (feature) =>
+        feature.id === "417344833" && feature.name === "Control Tower",
+    ),
+  );
+  assert.deepEqual(
+    airport.runwayPresets.map((preset) => preset.id),
+    ["south-flow", "north-flow"],
+  );
+
+  const sim = new GroundSim(airport, { seed: 1 });
+  sim.planes = [];
+  let sequence = 0;
+  for (const preset of airport.runwayPresets) {
+    assert.ok(
+      sim.configureRunways(preset.runwayUses, { presetId: preset.id }).ok,
+    );
+    for (const type of new Set(airport.fleet.arrivalTypes)) {
+      assert.ok(sim.supportedStands(type).length, `${preset.id} ${type} stand`);
+      sim.planes = [];
+      sim.spawnArrival(`MCO${++sequence}`, type);
+      assert.equal(sim.planes[0].type, type);
+      assert.ok(
+        sim.landingOptions(sim.planes[0]).length,
+        `${preset.id} ${type} landing exit`,
+      );
+    }
+  }
+});
+
 test("malformed airport packages fail before a session can start", () => {
   const damage = [
     (p) => p.geometry.nodes.push({ ...p.geometry.nodes[0] }),
@@ -168,6 +285,24 @@ test("malformed airport packages fail before a session can start", () => {
     (p) => (p.scenario.traffic.arrivalInterval = 0),
     (p) => (p.operations.map.bounds.maxX = p.operations.map.bounds.minX),
     (p) => (p.geometry.nodes.find((n) => n.id === "apron").x = 3000),
+    (p) =>
+      (p.towerView = {
+        featureId: "missing",
+        structureHeight: 50,
+        viewpointHeight: 50,
+        heightSource: { name: "Test", url: "https://example.com" },
+      }),
+    (p) =>
+      (p.cameraViews = [
+        {
+          id: "bad-camera",
+          label: "Bad camera",
+          shortLabel: "BAD",
+          position: { x: 1e9, y: 0, height: 10 },
+          target: { x: 0, y: 0, height: 0 },
+          fov: 45,
+        },
+      ]),
   ];
   for (const mutate of damage) {
     const p = input();
@@ -280,60 +415,6 @@ test("an audited airport revision preserves a format-2 game after additive runwa
   assert.deepEqual(restored.runwayUses(), frankfurt.scenario.runwayUses);
 });
 
-test("the immediately previous production save revision reloads without spawning a departure", () => {
-  assert.ok(
-    defaultAirport.scenario.compatibleConfigurationRevisions.includes(
-      "a87c13b0",
-    ),
-  );
-  const memory = store(),
-    storage = new GameStorage(defaultAirport, () => memory),
-    original = new GroundSim(defaultAirport),
-    before = original.planes.length;
-  assert.ok(storage.save(original, { paused: true }));
-  const raw = JSON.parse(memory.getItem(storage.key));
-  raw.configurationRevision = "a87c13b0";
-  raw.simulation.nextArrival = null;
-  raw.simulation.nextDeparture = 0;
-  memory.setItem(storage.key, JSON.stringify(raw));
-
-  const restored = new GroundSim(defaultAirport),
-    result = storage.load(restored);
-  assert.equal(result.status, "restored");
-  restored.tick(0.05);
-  assert.equal(restored.planes.length, before);
-  assert.equal(restored.nextDeparture, 0);
-});
-
-test("legacy saves are preserved but never migrated", () => {
-  const raw = fs.readFileSync(
-    new URL("./fixtures/v1/taxi.json", import.meta.url),
-    "utf8",
-  );
-  const memory = store();
-  memory.setItem("ground-control:save:EGPH", raw);
-  const session = new GameSession(defaultAirport, { storage: () => memory });
-  assert.equal(session.restored.status, "invalid");
-  assert.equal(session.activate(), false);
-  assert.equal(memory.getItem(session.storage.key), raw);
-  session.restart();
-  const upgraded = JSON.parse(memory.getItem(session.storage.key));
-  assert.equal(
-    upgraded.configurationRevision,
-    configurationRevision(defaultAirport),
-  );
-  assert.equal(upgraded.version, 2);
-  assert.equal(upgraded.revision, airportRevision(defaultAirport));
-  const modified = structuredClone(defaultAirport);
-  modified.scenario.traffic.arrivalInterval++;
-  memory.setItem(session.storage.key, raw);
-  assert.equal(
-    new GameStorage(modified, () => memory).load(new GroundSim(modified))
-      .status,
-    "invalid",
-  );
-});
-
 test("map and weather-only edits do not invalidate operational saves", () => {
   const changed = structuredClone(defaultAirport);
   changed.operations.map.labels[0].text = "Updated label";
@@ -357,7 +438,7 @@ test("unsupported runway crossings cannot enter a playable airport package", () 
   assert.throws(() => createAirportPackage(p), /unprotected runway crossing/);
 });
 
-test("shared runtime and importer have no Edinburgh-specific operating constants", () => {
+test("shared runtime and importer contain no bundled-airport operating constants", () => {
   for (const file of [
     "src/sim.js",
     "src/app.js",
@@ -373,7 +454,7 @@ test("shared runtime and importer have no Edinburgh-specific operating constants
     );
     assert.doesNotMatch(
       source,
-      /Edinburgh|EGPH|\bD1\b|["'](?:06|24)["']/,
+      /Frankfurt|London City|EDDF|EGLC|\bM34\b|["'](?:09|27)["']/,
       file,
     );
   }

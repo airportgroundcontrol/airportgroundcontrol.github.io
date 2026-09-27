@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "tower": {
+    "featureId": "867688184",
+    "structureHeight": 50,
+    "viewpointHeight": 50,
+    "heightSource": {
+      "name": "NATS London City Airport tower factsheet",
+      "url": "https://www.nats.aero/wp-content/uploads/2024/08/TowersFactsheets2023.pdf"
+    }
+  },
+  "cameras": [
+    { "id": "west-apron", "label": "West Apron", "shortLabel": "WEST", "position": { "x": -610, "y": 115, "height": 20 }, "target": { "x": -330, "y": 20, "height": 3 }, "fov": 48 },
+    { "id": "central-apron", "label": "Central Apron", "shortLabel": "CENT", "position": { "x": -140, "y": 125, "height": 24 }, "target": { "x": 100, "y": 15, "height": 3 }, "fov": 50 },
+    { "id": "east-apron", "label": "East Apron", "shortLabel": "EAST", "position": { "x": 390, "y": 105, "height": 20 }, "target": { "x": 600, "y": 5, "height": 3 }, "fov": 48 },
+    { "id": "runway-east", "label": "Runway 27 End", "shortLabel": "27", "position": { "x": 725, "y": 95, "height": 16 }, "target": { "x": 300, "y": -5, "height": 2 }, "fov": 44 }
+  ]
+}

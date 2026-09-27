@@ -553,15 +553,44 @@ export function restoreSimulation(sim, state) {
 
 export function restoreView(value, sim) {
   const ui = object(value) ? value : {};
-  const camera =
-    object(ui.camera) &&
-    ["x", "y", "zoom"].every((key) => finite(ui.camera[key])) &&
-    Math.abs(ui.camera.x) < 100000 &&
-    Math.abs(ui.camera.y) < 100000 &&
-    ui.camera.zoom >= 0.01 &&
-    ui.camera.zoom <= 3
-      ? { ...ui.camera }
+  const validMapCamera = (camera) =>
+    object(camera) &&
+    ["x", "y", "zoom"].every((key) => finite(camera[key])) &&
+    Math.abs(camera.x) < 100000 &&
+    Math.abs(camera.y) < 100000 &&
+    camera.zoom >= 0.01 &&
+    camera.zoom <= 3
+      ? { x: camera.x, y: camera.y, zoom: camera.zoom }
       : null;
+  const validLook = (
+    look,
+    { minPitch = -0.75, maxPitch = 0.35, maxFov = 75 } = {},
+  ) =>
+    object(look) &&
+    ["yaw", "pitch", "fov"].every((key) => finite(look[key])) &&
+    Math.abs(look.yaw) <= Math.PI &&
+    look.pitch >= minPitch &&
+    look.pitch <= maxPitch &&
+    look.fov >= 6 &&
+    look.fov <= maxFov
+      ? { yaw: look.yaw, pitch: look.pitch, fov: look.fov }
+      : null;
+  const camera = validMapCamera(ui.camera),
+    mapCameras = {
+      "2d": validMapCamera(ui.mapCameras?.["2d"]),
+      "3d": validMapCamera(ui.mapCameras?.["3d"]),
+    },
+    tower = validLook(ui.towerView?.tower, {
+      minPitch: -0.55,
+      maxPitch: 0.25,
+      maxFov: 60,
+    }),
+    cameraLooks = Object.fromEntries(
+      sim.data.cameraViews.flatMap((definition) => {
+        const look = validLook(ui.towerView?.cameras?.[definition.id]);
+        return look ? [[definition.id, look]] : [];
+      }),
+    );
   return {
     selected:
       sim.planes.find((p) => p.id === ui.selected && p.state !== "done")?.id ??
@@ -571,6 +600,11 @@ export function restoreView(value, sim) {
     paused: ui.paused === true,
     labels: ui.labels !== false,
     camera,
+    mapCameras,
+    towerView:
+      tower || Object.keys(cameraLooks).length
+        ? { tower, cameras: cameraLooks }
+        : null,
     planning: ui.planning === true,
     waypoints: Array.isArray(ui.waypoints)
       ? ui.waypoints.filter((id) => sim.nodes.has(id)).slice(0, 500)
@@ -581,6 +615,15 @@ export function restoreView(value, sim) {
     )
       ? ui.runwayChoice
       : "",
+    cameraFeeds: Array.isArray(ui.cameraFeeds)
+      ? [
+          ...new Set(
+            ui.cameraFeeds.filter((id) =>
+              sim.data.cameraViews.some((camera) => camera.id === id),
+            ),
+          ),
+        ].slice(0, 4)
+      : [],
   };
 }
 

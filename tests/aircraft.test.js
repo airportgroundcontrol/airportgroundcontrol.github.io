@@ -5,11 +5,16 @@ import {
   aircraftType,
   queueSeparation,
 } from "../src/aircraft/catalog.js";
+import {
+  aircraftVisual3d,
+  aircraftVisuals3d,
+} from "../src/aircraft/visuals-3d.js";
 import { aircraftPixels } from "../src/aircraft/render.js";
 import { advanceSpeed, movementTarget } from "../src/aircraft/movement.js";
 import { standFit } from "../src/aircraft/compatibility.js";
 import { GroundSim } from "../src/sim.js";
 import { defaultAirport } from "./fixtures/standard-airport.js";
+import { airportCatalog } from "../src/airports/catalog.js";
 import { createAirportPackage } from "../src/airports/package.js";
 import { syntheticInput } from "./fixtures/synthetic-airport.js";
 import {
@@ -27,8 +32,8 @@ const memory = () => {
     setItem: (key, value) => entries.set(key, value),
   };
 };
-const setup = () => {
-  const sim = new GroundSim(defaultAirport);
+const setup = (airport = defaultAirport) => {
+  const sim = new GroundSim(airport);
   sim.nextArrival = sim.nextDeparture = Infinity;
   return sim;
 };
@@ -44,6 +49,8 @@ test("eleven immutable aircraft types have physical dimensions, distinct familie
   assert.equal(aircraftType("A333").wake, "H");
   assert.equal(aircraftType("B748").shape, "largeWidebody");
   assert.equal(aircraftType("DH8D").shape, "turboprop");
+  assert.equal(aircraftType("B748").height, 19.4);
+  assert.equal(aircraftType("AT72").height, 7.65);
   assert.ok(aircraftType("B748").wingspan > aircraftType("B77W").wingspan);
   assert.ok(aircraftType("A333").wingspan > aircraftType("A320").wingspan);
   assert.throws(() => {
@@ -56,20 +63,54 @@ test("eleven immutable aircraft types have physical dimensions, distinct familie
   assert.equal(aircraftPixels("A333", 1).length, aircraftType("A333").length);
 });
 
+test("every aircraft has an immutable, individually recognizable 3D profile", () => {
+  assert.deepEqual(
+    Object.keys(aircraftVisuals3d).sort(),
+    Object.keys(aircraftCatalog).sort(),
+  );
+  assert.equal(
+    new Set(
+      Object.values(aircraftVisuals3d).map((visual) => JSON.stringify(visual)),
+    ).size,
+    Object.keys(aircraftCatalog).length,
+  );
+  assert.equal(aircraftVisual3d("AT72").tail, "t");
+  assert.equal(aircraftVisual3d("DH8D").engines.blades, 6);
+  assert.equal(aircraftVisual3d("A320").wingtip, "sharklet");
+  assert.equal(aircraftVisual3d("A320").model.kind, "attributed-gltf");
+  assert.equal(aircraftVisual3d("A320").model.license, "CC BY 4.0");
+  assert.equal(aircraftVisual3d("A320").model.credit, "amvlab");
+  assert.equal(aircraftVisual3d("A320").model.wheelbase, 12.64);
+  assert.equal(aircraftVisual3d("A320").model.mainGearTrack, 7.59);
+  assert.equal(aircraftVisual3d("B738").engines.flattened, true);
+  assert.equal(aircraftVisual3d("B77W").gear.mainAxles, 3);
+  assert.equal(aircraftVisual3d("B748").engines.lanes.length * 2, 4);
+  assert.equal(aircraftVisual3d("B748").upperDeck, true);
+  assert.equal(aircraftVisual3d("A359").wingtip, "curved");
+  assert.throws(() => aircraftVisual3d("UNKNOWN"));
+  assert.throws(() => {
+    aircraftVisual3d("A320").radius = 99;
+  }, TypeError);
+});
+
 test("widebody stand eligibility and adjacent reservations are enforced by commands", () => {
-  const s = setup(),
-    p = s.planes.find((p) => p.type === "A333");
-  assert.ok(standFit(s.data, "14", p.type));
-  assert.equal(standFit(s.data, "1", p.type), null);
+  const frankfurt = airportCatalog.find((airport) => airport.id === "EDDF"),
+    s = setup(frankfurt);
+  s.planes = [];
+  s.nextId = 1;
+  s.spawnArrival("TEST333", "A333");
+  const p = s.planes[0];
+  assert.equal(standFit(s.data, "F211", p.type), null);
+  assert.match(standFit(s.data, "A1", p.type), /Too small/);
   assert.ok(s.command(p.id, "land").ok);
   until(s, p, "inbound");
-  assert.match(s.command(p.id, "taxi", { stand: "14" }).message, /Too small/);
-  assert.ok(s.command(p.id, "taxi", { stand: "1" }).ok);
+  assert.match(s.command(p.id, "taxi", { stand: "A1" }).message, /Too small/);
+  assert.ok(s.command(p.id, "taxi", { stand: "F211" }).ok);
   const before = s.planes.length;
-  s.spawnDeparture("2", "TEST222", "AT72");
+  s.spawnDeparture("F212", "TEST222", "AT72");
   assert.equal(s.planes.length, before);
   until(s, p, "parked");
-  assert.equal(p.stand, "1");
+  assert.equal(p.stand, "F211");
   assert.equal(s.runwayOwner, null);
   p.parkedAt = s.time - p.turnaroundDuration;
   until(s, p, "gate");
@@ -82,7 +123,7 @@ test("widebody stand eligibility and adjacent reservations are enforced by comma
     assert.ok(s.command(p.id, command).ok, command);
     until(s, p, state);
   }
-  assert.equal(s.lastDeparture.type, "A333");
+  assert.equal(s.lastDepartureFor(p).type, "A333");
 });
 
 test("restricted taxi edges cannot be bypassed through waypoints and unknown stand limits reject", () => {
@@ -176,7 +217,7 @@ test("configured wake delay prevents departure and survives save/reload", () => 
   assert.match(s.command(p.id, "takeoff").message, /Wake separation/);
   const restored = setup();
   assert.ok(restoreSimulation(restored, structuredClone(captureSimulation(s))));
-  assert.equal(restored.wakeWait(restored.planes[0]), 90);
+  assert.ok(Math.abs(restored.wakeWait(restored.planes[0]) - 90) < 1e-6);
   for (let i = 0; i < 901; i++) restored.tick(0.1);
   assert.ok(restored.command(p.id, "takeoff").ok);
 });
