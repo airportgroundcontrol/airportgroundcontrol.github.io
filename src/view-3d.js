@@ -210,6 +210,56 @@ function flatPolygonGeometries(features, height) {
     });
 }
 
+function facadeBandGeometry(points, bottom, top) {
+  if (!points || points.length < 3) return null;
+  const closed =
+    points[0][0] === points.at(-1)[0] && points[0][1] === points.at(-1)[1];
+  const ring = closed ? points.slice(0, -1) : points;
+  if (ring.length < 3) return null;
+  const centerX = ring.reduce((sum, point) => sum + point[0], 0) / ring.length;
+  const centerZ = ring.reduce((sum, point) => sum + point[1], 0) / ring.length;
+  const scaled = ring.map(([x, z]) => [
+    centerX + (x - centerX) * 1.006,
+    centerZ + (z - centerZ) * 1.006,
+  ]);
+  const positions = [];
+  const indices = [];
+  for (let index = 0; index < scaled.length; index++) {
+    const next = (index + 1) % scaled.length;
+    const offset = positions.length / 3;
+    positions.push(
+      scaled[index][0],
+      bottom,
+      scaled[index][1],
+      scaled[next][0],
+      bottom,
+      scaled[next][1],
+      scaled[index][0],
+      top,
+      scaled[index][1],
+      scaled[next][0],
+      top,
+      scaled[next][1],
+    );
+    indices.push(
+      offset,
+      offset + 1,
+      offset + 2,
+      offset + 1,
+      offset + 3,
+      offset + 2,
+    );
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(positions, 3),
+  );
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
 function towerPosition(data) {
   const configured = data.towerView;
   const tower = configured
@@ -816,6 +866,9 @@ function buildAirport(scene, data, tower) {
   const bounds = data.operations.map.bounds;
   const environment = data.environment || { features: [], featureStyles: {} };
   const visualStyle = (feature) => environment.featureStyles[feature.id] || {};
+  const naturalAirfield = environment.features.some(
+    (feature) => feature.type === "wood",
+  );
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerZ = (bounds.minY + bounds.maxY) / 2;
   const ground = new THREE.Mesh(
@@ -823,7 +876,10 @@ function buildAirport(scene, data, tower) {
       bounds.maxX - bounds.minX + 7000,
       bounds.maxY - bounds.minY + 7000,
     ),
-    new THREE.MeshStandardMaterial({ color: 0x555a55, roughness: 1 }),
+    new THREE.MeshStandardMaterial({
+      color: naturalAirfield ? 0x465342 : 0x555a55,
+      roughness: 1,
+    }),
   );
   ground.rotation.x = -Math.PI / 2;
   ground.position.set(centerX, -0.18, centerZ);
@@ -859,14 +915,21 @@ function buildAirport(scene, data, tower) {
       ),
     );
 
-  const grass = [...environmentByType(["grass"]), ...byType(["wood"])];
+  const grass = environmentByType(["grass"]);
   const grassMesh = mergedMesh(
     flatPolygonGeometries(grass, -0.055),
     new THREE.MeshStandardMaterial({ color: 0x486143, roughness: 1 }),
   );
   if (grassMesh) scene.add(grassMesh);
 
-  const roads = byType(["road"]);
+  const woods = [...environmentByType(["wood"]), ...byType(["wood"])];
+  const woodMesh = mergedMesh(
+    flatPolygonGeometries(woods, -0.045),
+    new THREE.MeshStandardMaterial({ color: 0x304b35, roughness: 1 }),
+  );
+  if (woodMesh) scene.add(woodMesh);
+
+  const roads = [...byType(["road"]), ...environmentByType(["road"])];
   const roadGroups = {
     main: roads.filter((feature) =>
       ["motorway", "trunk", "primary", "secondary", "tertiary"].includes(
@@ -999,6 +1062,7 @@ function buildAirport(scene, data, tower) {
 
   const buildings = byType(["building", "terminal", "hangar"]);
   const buildingGroups = new Map();
+  const windowGeometry = [];
   for (const feature of buildings) {
     if (feature.id === tower.featureId) continue;
     const shape = polygonShape(feature.points);
@@ -1019,6 +1083,18 @@ function buildAirport(scene, data, tower) {
       buildingGroups.set(category, { walls: [], roofs: [] });
     buildingGroups.get(category).walls.push(geometry);
     buildingGroups.get(category).roofs.push(roof);
+    if (height >= 9 && category !== "industrial") {
+      const bands = category === "terminal" || height >= 24 ? 2 : 1;
+      for (let index = 0; index < bands; index++) {
+        const center = height * (bands === 1 ? 0.55 : 0.38 + index * 0.28);
+        const windows = facadeBandGeometry(
+          feature.points,
+          Math.max(2.5, center - 0.7),
+          Math.min(height - 0.7, center + 0.7),
+        );
+        if (windows) windowGeometry.push(windows);
+      }
+    }
   }
   const buildingPalette = {
     terminal: { wall: 0x819ca4, roof: 0xc5cbca, metalness: 0.16 },
@@ -1049,6 +1125,16 @@ function buildAirport(scene, data, tower) {
     if (walls) scene.add(walls);
     if (roofs) scene.add(roofs);
   }
+  const windows = mergedMesh(
+    windowGeometry,
+    new THREE.MeshPhysicalMaterial({
+      color: 0x263f49,
+      roughness: 0.22,
+      metalness: 0.18,
+      clearcoat: 0.35,
+    }),
+  );
+  if (windows) scene.add(windows);
 
   const towerBase = new THREE.Mesh(
     new THREE.CylinderGeometry(6, 9, tower.height - 9, 12, 1, true),
@@ -1244,7 +1330,7 @@ export class TowerView {
         if (!drag) return;
         state.yaw += (event.clientX - drag.x) * 0.0032;
         state.pitch = THREE.MathUtils.clamp(
-          state.pitch - (event.clientY - drag.y) * 0.0024,
+          state.pitch + (event.clientY - drag.y) * 0.0024,
           -0.75,
           0.35,
         );
@@ -1516,7 +1602,7 @@ export class TowerView {
       const dy = event.clientY - drag.y;
       if (Math.abs(dx) + Math.abs(dy) > 2) drag.moved = true;
       this.yaw += dx * 0.0032;
-      this.pitch = THREE.MathUtils.clamp(this.pitch - dy * 0.0024, -0.55, 0.25);
+      this.pitch = THREE.MathUtils.clamp(this.pitch + dy * 0.0024, -0.55, 0.25);
       drag.x = event.clientX;
       drag.y = event.clientY;
       this.updateCamera();

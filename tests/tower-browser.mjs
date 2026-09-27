@@ -192,7 +192,7 @@ try {
     },
   }));
   assert.ok(feedControlsAfter.feed.yaw > feedControlsBefore.feed.yaw);
-  assert.ok(feedControlsAfter.feed.pitch < feedControlsBefore.feed.pitch);
+  assert.ok(feedControlsAfter.feed.pitch > feedControlsBefore.feed.pitch);
   assert.ok(feedControlsAfter.feed.fov < feedControlsBefore.feed.fov);
   assert.deepEqual(feedControlsAfter.tower, feedControlsBefore.tower);
 
@@ -266,7 +266,7 @@ try {
     fov: groundControl.towerView.camera.fov,
   }));
   assert.ok(cameraAfter.yaw > cameraBefore.yaw);
-  assert.ok(cameraAfter.pitch < cameraBefore.pitch);
+  assert.ok(cameraAfter.pitch > cameraBefore.pitch);
   assert.ok(cameraAfter.fov < cameraBefore.fov);
 
   const focusedAircraft = await page.evaluate(() => {

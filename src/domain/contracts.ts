@@ -95,6 +95,7 @@ export interface AirportOperations {
     path: NodeId[];
   }[];
   holdingPoints: NodeId[];
+  holdingPointLabels?: Record<string, string>;
   curveCorridor?: number;
   pushbacks?: Record<
     string,

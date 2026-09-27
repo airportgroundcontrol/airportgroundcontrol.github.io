@@ -5,14 +5,26 @@
     {
       "runwayId": "18L-36R",
       "endId": "18L",
-      "arrivals": true,
+      "arrivals": false,
       "departures": true
+    },
+    {
+      "runwayId": "18R-36L",
+      "endId": "18R",
+      "arrivals": true,
+      "departures": false
     },
     {
       "runwayId": "17R-35L",
       "endId": "17R",
-      "arrivals": true,
+      "arrivals": false,
       "departures": true
+    },
+    {
+      "runwayId": "17L-35R",
+      "endId": "17L",
+      "arrivals": true,
+      "departures": false
     }
   ],
   "runwayPresets": [
@@ -23,14 +35,26 @@
         {
           "runwayId": "18L-36R",
           "endId": "18L",
-          "arrivals": true,
+          "arrivals": false,
           "departures": true
+        },
+        {
+          "runwayId": "18R-36L",
+          "endId": "18R",
+          "arrivals": true,
+          "departures": false
         },
         {
           "runwayId": "17R-35L",
           "endId": "17R",
-          "arrivals": true,
+          "arrivals": false,
           "departures": true
+        },
+        {
+          "runwayId": "17L-35R",
+          "endId": "17L",
+          "arrivals": true,
+          "departures": false
         }
       ]
     },
@@ -41,14 +65,26 @@
         {
           "runwayId": "18L-36R",
           "endId": "36R",
-          "arrivals": true,
+          "arrivals": false,
           "departures": true
+        },
+        {
+          "runwayId": "18R-36L",
+          "endId": "36L",
+          "arrivals": true,
+          "departures": false
         },
         {
           "runwayId": "17R-35L",
           "endId": "35L",
-          "arrivals": true,
+          "arrivals": false,
           "departures": true
+        },
+        {
+          "runwayId": "17L-35R",
+          "endId": "35R",
+          "arrivals": true,
+          "departures": false
         }
       ]
     }
@@ -133,6 +169,7 @@
   },
   "turnaroundSeconds": 3600,
   "turnaroundJitter": 0.25,
+  "compatibleConfigurationRevisions": ["2e221f13"],
   "cleanupSeconds": 90,
   "scoring": { "movement": 100, "goAround": 30, "conflict": 25 },
   "clockStartSeconds": 27000,

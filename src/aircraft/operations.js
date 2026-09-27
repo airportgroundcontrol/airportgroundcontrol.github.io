@@ -88,7 +88,10 @@ export function landingOptions(sim, p, runwayValue = p) {
           return edge && edgeAllows(sim.data, edge.data, p.type);
         }) &&
         sim.data.stands.some(
-          (s) => !sim.standReason({ ...p, node: last.id }, s.id),
+          (s) =>
+            !sim.standReason({ ...p, node: last.id }, s.id, {
+              controlled: true,
+            }),
         )
       );
     })

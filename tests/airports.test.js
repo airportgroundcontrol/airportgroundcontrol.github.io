@@ -146,6 +146,14 @@ test("Frankfurt provides real multi-runway geometry and complete routes for its 
   });
   assert.deepEqual(defaultAirport.views, ["2d", "3d"]);
   assert.equal(airport.cameraViews.length, 6);
+  assert.ok(
+    airport.environment.features.filter((feature) => feature.type === "water")
+      .length >= 50,
+  );
+  assert.ok(
+    airport.environment.features.filter((feature) => feature.type === "wood")
+      .length >= 150,
+  );
   assert.equal(defaultAirport.cameraViews.length, 4);
   assert.equal(airport.operations.runways.length, 4);
   assert.deepEqual(
@@ -219,8 +227,17 @@ test("Orlando provides real four-runway geometry and complete north and south fl
     },
   });
   assert.equal(airport.cameraViews.length, 6);
+  assert.ok(
+    airport.environment.features.filter((feature) => feature.type === "water")
+      .length >= 200,
+  );
+  assert.ok(
+    airport.environment.features.filter((feature) => feature.type === "grass")
+      .length >= 100,
+  );
   assert.equal(airport.operations.runways.length, 4);
-  assert.equal(airport.runwayConfigurations.length, 4);
+  assert.equal(airport.runwayConfigurations.length, 8);
+  assert.equal(airport.operations.runwayCrossings.length, 7);
   assert.equal(airport.stands.length, 50);
   assert.ok(airport.nodes.length > 5000);
   assert.ok(
@@ -238,6 +255,7 @@ test("Orlando provides real four-runway geometry and complete north and south fl
   sim.planes = [];
   let sequence = 0;
   for (const preset of airport.runwayPresets) {
+    assert.equal(preset.runwayUses.length, 4);
     assert.ok(
       sim.configureRunways(preset.runwayUses, { presetId: preset.id }).ok,
     );
@@ -252,6 +270,63 @@ test("Orlando provides real four-runway geometry and complete north and south fl
       );
     }
   }
+});
+
+test("Orlando outer runways connect to the terminal through controlled crossings", () => {
+  const airport = airportCatalog.find((candidate) => candidate.id === "KMCO"),
+    sim = new GroundSim(airport, { seed: 41 });
+  sim.planes = [];
+  assert.ok(
+    sim.configureRunways([
+      {
+        runwayId: "18R-36L",
+        endId: "18R",
+        arrivals: true,
+        departures: true,
+      },
+    ]).ok,
+  );
+
+  sim.spawnDeparture("1", "MCO101", "A320");
+  const departure = sim.planes[0];
+  assert.equal(departure.runwayKey, "18R-36L:18R");
+  assert.ok(sim.command(departure.id, "pushback").ok);
+  until(sim, departure.id, "ready");
+  assert.ok(
+    sim.command(departure.id, "taxi", {
+      holdingPoint: "12574635363",
+    }).ok,
+  );
+  until(sim, departure.id, "atpoint");
+  assert.ok(
+    sim.command(departure.id, "cross", {
+      crossingId: "18L-36R-B1",
+    }).ok,
+  );
+  until(sim, departure.id, "atpoint");
+  assert.ok(sim.command(departure.id, "taxi").ok);
+  until(sim, departure.id, "holding");
+  assert.equal(departure.node, "12574635361");
+
+  sim.planes = [];
+  sim.spawnArrival("MCO202", "A320");
+  const arrival = sim.planes[0];
+  assert.equal(arrival.runwayKey, "18R-36L:18R");
+  assert.ok(sim.command(arrival.id, "land").ok);
+  until(sim, arrival.id, "inbound");
+  assert.ok(
+    sim.command(arrival.id, "taxi", {
+      holdingPoint: "12728389201",
+    }).ok,
+  );
+  until(sim, arrival.id, "atpoint");
+  assert.ok(
+    sim.command(arrival.id, "cross", {
+      crossingId: "18L-36R-J",
+    }).ok,
+  );
+  until(sim, arrival.id, "atpoint");
+  assert.ok(sim.freeStands(arrival).length);
 });
 
 test("malformed airport packages fail before a session can start", () => {

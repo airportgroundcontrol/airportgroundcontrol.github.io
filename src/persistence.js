@@ -94,6 +94,7 @@ export function configurationRevision(data) {
         version: data.operations.version,
         runways: data.operations.runways,
         holdingPoints: data.operations.holdingPoints,
+        holdingPointLabels: data.operations.holdingPointLabels,
         curveCorridor: data.operations.curveCorridor,
         pushbacks: data.operations.pushbacks,
         runwayCrossings: data.operations.runwayCrossings,

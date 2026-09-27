@@ -28,7 +28,7 @@ const read = (file) => JSON.parse(fs.readFileSync(file, "utf8"));
 const geometry = read(geometryPath);
 const surfaces = read(surfacesPath);
 const buildings = read(buildingsPath);
-const roads = read(roadsPath);
+const roads = roadsPath === "-" ? { elements: [] } : read(roadsPath);
 const rails = railsPath === "-" ? { elements: [] } : read(railsPath);
 const featureIds = new Set(geometry.features.map((feature) => feature.id));
 const [lon0, lat0] = geometry.center;
@@ -60,6 +60,9 @@ const visualFeatures = surfaces.elements
         element.tags?.landuse === "grass" ||
         element.tags?.natural === "grassland" ||
         element.tags?.landcover === "grass" ||
+        element.tags?.landuse === "meadow" ||
+        element.tags?.natural === "wood" ||
+        element.tags?.landuse === "forest" ||
         element.tags?.leisure === "park"),
   )
   .map((element) => ({
@@ -69,7 +72,9 @@ const visualFeatures = surfaces.elements
       element.tags.waterway === "riverbank" ||
       element.tags.landuse === "basin"
         ? "water"
-        : "grass",
+        : element.tags.natural === "wood" || element.tags.landuse === "forest"
+          ? "wood"
+          : "grass",
     name: element.tags.name || "",
     closed:
       element.geometry[0].lat === element.geometry.at(-1).lat &&
@@ -106,9 +111,23 @@ for (const element of buildings.elements) {
 }
 for (const element of roads.elements) {
   const id = String(element.id);
-  if (!featureIds.has(id)) continue;
   const roadClass = token(element.tags?.highway);
-  if (roadClass) featureStyles[id] = { roadClass };
+  if (!roadClass) continue;
+  if (featureIds.has(id)) {
+    featureStyles[id] = { roadClass };
+    continue;
+  }
+  if (!Array.isArray(element.geometry) || element.geometry.length < 2) continue;
+  const visualId = `osm-way-${element.id}`;
+  visualFeatures.push({
+    id: visualId,
+    type: "road",
+    name: element.tags?.name || "",
+    closed: false,
+    width: number(element.tags?.width) || 0,
+    points: element.geometry.map(project),
+  });
+  featureStyles[visualId] = { roadClass };
 }
 
 const environment = {
@@ -131,6 +150,8 @@ console.log(
         .length,
       grass: visualFeatures.filter((feature) => feature.type === "grass")
         .length,
+      wood: visualFeatures.filter((feature) => feature.type === "wood").length,
+      road: visualFeatures.filter((feature) => feature.type === "road").length,
       rail: visualFeatures.filter((feature) => feature.type === "rail").length,
       styledFeatures: Object.keys(featureStyles).length,
     },

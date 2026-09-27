@@ -133,10 +133,16 @@ export class GroundSim {
       throw new Error("A validated airport package is required.");
     this.data = data;
     this.scenario = data.scenario;
-    this.nodes = new Map(data.nodes.map((n) => [n.id, n]));
+    const holdingPointLabels = data.operations.holdingPointLabels || {};
+    this.nodes = new Map(
+      data.nodes.map((n) => [
+        n.id,
+        holdingPointLabels[n.id] ? { ...n, ref: holdingPointLabels[n.id] } : n,
+      ]),
+    );
     this.stands = new Map(data.stands.map((s) => [s.id, s]));
     this.graph = createGraph();
-    for (const n of data.nodes) this.graph.addNode(n.id, n);
+    for (const n of this.nodes.values()) this.graph.addNode(n.id, n);
     for (const e of data.edges) this.graph.addLink(e.a, e.b, e);
     this.standNodes = new Set(data.stands.map((stand) => stand.node));
     this.defaultRouteTypes = new Set(data.fleet?.defaultRouteTypes || []);
@@ -287,7 +293,7 @@ export class GroundSim {
         runway.departures &&
         runway.departureHold &&
         runway.departureEntry &&
-        this.hasGroundRoute(stand.exit, runway.departureHold, type) &&
+        this.hasControlledGroundRoute(stand.exit, runway.departureHold, type) &&
         this.path(runway.departureHold, runway.departureEntry, runway.key, type)
           .length > 0,
     );
@@ -307,12 +313,12 @@ export class GroundSim {
       const last = runway.configuration.vacatePath.at(-1);
       return stand
         ? this.standPathAllows(type, stand) &&
-            this.hasGroundRoute(last, stand.exit, type)
+            this.hasControlledGroundRoute(last, stand.exit, type)
         : this.data.stands.some(
             (candidate) =>
               !standFit(this.data, candidate.id, type) &&
               this.standPathAllows(type, candidate) &&
-              this.hasGroundRoute(last, candidate.exit, type),
+              this.hasControlledGroundRoute(last, candidate.exit, type),
           );
     });
   }
@@ -372,7 +378,11 @@ export class GroundSim {
     if (type)
       this.spawnDeparture(this.pick(eligible.get(type)).id, undefined, type);
   }
-  standReason(p, id, { occupancy = true, route = true } = {}) {
+  standReason(
+    p,
+    id,
+    { occupancy = true, route = true, controlled = false } = {},
+  ) {
     const stand = this.stands.get(id);
     if (!stand) return "Unknown stand";
     const fit = standFit(this.data, id, p.type);
@@ -388,16 +398,14 @@ export class GroundSim {
       )
     )
       return "Occupied or reserved";
-    if (
-      route &&
-      !this.path(
-        p.node || this.runwayFor(p).configuration.vacatePath.at(-1),
-        stand.node,
-        false,
-        p.type,
-      ).length
-    )
-      return "No compatible taxi route";
+    if (route) {
+      const from = p.node || this.runwayFor(p).configuration.vacatePath.at(-1);
+      const available = controlled
+        ? this.standPathAllows(p.type, stand) &&
+          this.hasControlledGroundRoute(from, stand.exit, p.type)
+        : this.path(from, stand.node, false, p.type).length > 0;
+      if (!available) return "No compatible taxi route";
+    }
     return null;
   }
   supportsType(type, stand) {
@@ -978,6 +986,39 @@ export class GroundSim {
     const components = this.groundComponentCache.get(type);
     return components.has(from) && components.get(from) === components.get(to);
   }
+  hasControlledGroundRoute(from, to, type = null) {
+    const connected = (a, b) =>
+      type ? this.hasGroundRoute(a, b, type) : this.path(a, b).length > 0;
+    if (connected(from, to)) return true;
+    const crossings = (this.data.operations.runwayCrossings || []).filter(
+      (crossing) =>
+        !type ||
+        crossing.path.slice(1).every((id, index) => {
+          const edge =
+            this.graph.getLink(crossing.path[index], id) ||
+            this.graph.getLink(id, crossing.path[index]);
+          return edge && edgeAllows(this.data, edge.data, type);
+        }),
+    );
+    const queue = [from],
+      visited = new Set([from]);
+    while (queue.length) {
+      const current = queue.shift();
+      for (const crossing of crossings) {
+        const ends = [crossing.path[0], crossing.path.at(-1)];
+        for (let i = 0; i < 2; i++) {
+          const entry = ends[i],
+            exit = ends[1 - i];
+          if (!visited.has(exit) && connected(current, entry)) {
+            if (connected(exit, to)) return true;
+            visited.add(exit);
+            queue.push(exit);
+          }
+        }
+      }
+    }
+    return false;
+  }
   path(from, to, allowRunway = false, type = null) {
     if (!this.nodes.has(from) || !this.nodes.has(to)) return [];
     const allowed = new Set(
@@ -1198,10 +1239,10 @@ export class GroundSim {
     }
     return false;
   }
-  freeStands(plane = null) {
+  freeStands(plane = null, options = {}) {
     return this.data.stands.filter((s) =>
       plane
-        ? !this.standReason(plane, s.id)
+        ? !this.standReason(plane, s.id, options)
         : !this.planes.some(
             (p) =>
               (excludedStands(this.data, s.id).has(p.stand) ||
@@ -1331,10 +1372,12 @@ export class GroundSim {
       const arriving = p.direction === "arrival";
       const runway = arriving
         ? this.runwayFor(p)
-        : this.departureRunwayOptions(p).find(
-            (candidate) =>
-              candidate.key === (runwayKey || this.runwayFor(p).key),
-          );
+        : holdingPoint
+          ? this.runwayFor(p)
+          : this.departureRunwayOptions(p).find(
+              (candidate) =>
+                candidate.key === (runwayKey || this.runwayFor(p).key),
+            );
       if (!arriving && !runway)
         return reject(
           "Choose an active departure runway with a valid taxi route.",
@@ -1476,7 +1519,7 @@ export class GroundSim {
         (this.scenario.traffic.decisionSeconds || 8)
       )
         return reject("Too late for landing clearance. Go around.");
-      if (!this.freeStands(candidate).length)
+      if (!this.freeStands(candidate, { controlled: true }).length)
         return reject(
           "No available compatible stand. Arrival will go around without clearance.",
         );

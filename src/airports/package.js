@@ -204,7 +204,7 @@ export function createAirportPackage({
     );
     for (const feature of environment.features)
       requireValue(
-        ["water", "grass", "rail"].includes(feature.type) &&
+        ["water", "grass", "wood", "road", "rail"].includes(feature.type) &&
           text(feature.name) &&
           typeof feature.closed === "boolean" &&
           Array.isArray(feature.points) &&
@@ -216,7 +216,10 @@ export function createAirportPackage({
             (finite(feature.width) && feature.width > 0)),
         "visual environment feature",
       );
-    const featureIds = new Set(geometry.features.map((feature) => feature.id));
+    const featureIds = new Set([
+      ...geometry.features.map((feature) => feature.id),
+      ...environment.features.map((feature) => feature.id),
+    ]);
     for (const [id, style] of Object.entries(environment.featureStyles))
       requireValue(
         token(id) &&
@@ -258,6 +261,18 @@ export function createAirportPackage({
     "runways",
   );
   unique(operations.holdingPoints, "holding points");
+  const holdingPointLabels = operations.holdingPointLabels || {};
+  requireValue(
+    holdingPointLabels &&
+      typeof holdingPointLabels === "object" &&
+      !Array.isArray(holdingPointLabels) &&
+      Object.entries(holdingPointLabels).every(
+        ([id, label]) => operations.holdingPoints.includes(id) && text(label),
+      ),
+    "holding point labels",
+  );
+  const holdingPointLabel = (id) =>
+    holdingPointLabels[id] || nodes.get(id)?.ref;
   const runwayConfigurations = [];
   for (const runway of operations.runways) {
     requireValue(token(runway.id) && text(runway.label), "runway identity");
@@ -367,7 +382,7 @@ export function createAirportPackage({
         departureHold: c.departureHold,
         departureEntry: c.departureEntry,
         departureHoldLabel: c.departureHold
-          ? nodes.get(c.departureHold).ref
+          ? holdingPointLabel(c.departureHold)
           : undefined,
         arrivalExit: c.arrivalExit,
       });
@@ -375,7 +390,7 @@ export function createAirportPackage({
   }
   for (const id of operations.holdingPoints)
     requireValue(
-      nodes.get(id)?.hold && nodes.get(id).ref,
+      nodes.get(id)?.hold && holdingPointLabel(id),
       "holding point " + id,
     );
   const bounds = operations.map?.bounds;
@@ -676,27 +691,6 @@ export function createAirportPackage({
         option.path.every((id) => !sim.runwaysAt(nodes.get(id)).length),
         "pushback option crosses runway",
       );
-  for (const active of runwayConfigurations.filter((r) =>
-    r.capabilities.includes("arrival"),
-  ))
-    for (const exit of active.configuration.arrivalExits || [
-      {
-        id: "standard",
-        node: active.arrivalExit,
-        path: active.configuration.vacatePath,
-      },
-    ])
-      requireValue(
-        sim.runwayDistance(nodes.get(exit.node), active) <
-          active.physical.protectedHalfWidth &&
-          sim.runwayDistance(nodes.get(exit.path.at(-1)), active) >
-            active.physical.releaseDistance &&
-          geometry.stands.some(
-            (s) => sim.path(exit.path.at(-1), s.node).length > 0,
-          ),
-        "unsafe arrival exit",
-      );
-
   const crossings = operations.runwayCrossings || [];
   unique(
     crossings.map((crossing) => crossing.id),
@@ -747,6 +741,26 @@ export function createAirportPackage({
     );
     authorizePath(crossing.runwayId, crossing.path);
   }
+  for (const active of runwayConfigurations.filter((r) =>
+    r.capabilities.includes("arrival"),
+  ))
+    for (const exit of active.configuration.arrivalExits || [
+      {
+        id: "standard",
+        node: active.arrivalExit,
+        path: active.configuration.vacatePath,
+      },
+    ])
+      requireValue(
+        sim.runwayDistance(nodes.get(exit.node), active) <
+          active.physical.protectedHalfWidth &&
+          sim.runwayDistance(nodes.get(exit.path.at(-1)), active) >
+            active.physical.releaseDistance &&
+          geometry.stands.some((stand) =>
+            sim.hasControlledGroundRoute(exit.path.at(-1), stand.exit),
+          ),
+        "unsafe arrival exit",
+      );
   if (fleet) {
     requireValue(
       scenario.initialTraffic
@@ -801,15 +815,17 @@ export function createAirportPackage({
     requireValue(
       activeRunways
         .filter((r) => r.departures)
-        .some((r) => sim.path(s.exit, r.departureHold).length >= 2),
+        .some((r) => sim.hasControlledGroundRoute(s.exit, r.departureHold)),
       "stand cannot reach departure hold: " + s.id,
     );
     requireValue(
       activeRunways
         .filter((r) => r.arrivals)
-        .some(
-          (r) =>
-            sim.path(r.configuration.vacatePath.at(-1), s.node).length >= 2,
+        .some((r) =>
+          sim.hasControlledGroundRoute(
+            r.configuration.vacatePath.at(-1),
+            s.exit,
+          ),
         ),
       "arrival cannot reach stand: " + s.id,
     );
