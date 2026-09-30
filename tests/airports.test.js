@@ -264,10 +264,24 @@ test("Orlando provides real four-runway geometry and complete north and south fl
       sim.planes = [];
       sim.spawnArrival(`MCO${++sequence}`, type);
       assert.equal(sim.planes[0].type, type);
-      assert.ok(
-        sim.landingOptions(sim.planes[0]).length,
-        `${preset.id} ${type} landing exit`,
-      );
+      const landingOptions = sim.landingOptions(sim.planes[0]);
+      assert.ok(landingOptions.length, `${preset.id} ${type} landing exit`);
+      for (const exit of landingOptions) {
+        const node = exit.path.at(-1),
+          plane = { ...sim.planes[0], node, route: [] },
+          stand = airport.stands.find(
+            (candidate) =>
+              !sim.standReason(plane, candidate.id, {
+                occupancy: false,
+                controlled: true,
+              }),
+          );
+        assert.ok(stand, `${preset.id} ${type} ${exit.id} stand`);
+        assert.ok(
+          sim.taxiPlan(plane, stand.node).points.length >= 2,
+          `${preset.id} ${type} ${exit.id} staged taxi route`,
+        );
+      }
     }
   }
 });
@@ -314,19 +328,20 @@ test("Orlando outer runways connect to the terminal through controlled crossings
   assert.equal(arrival.runwayKey, "18R-36L:18R");
   assert.ok(sim.command(arrival.id, "land").ok);
   until(sim, arrival.id, "inbound");
-  assert.ok(
-    sim.command(arrival.id, "taxi", {
-      holdingPoint: "12728389201",
-    }).ok,
-  );
+  assert.equal(sim.freeStands(arrival).length, 0);
+  const stand = sim.freeStands(arrival, { controlled: true })[0];
+  assert.ok(stand);
+  assert.ok(sim.command(arrival.id, "taxi", { stand: stand.id }).ok);
+  assert.equal(arrival.stand, stand.id);
+  assert.equal(arrival.taxiTarget, "hold");
   until(sim, arrival.id, "atpoint");
-  assert.ok(
-    sim.command(arrival.id, "cross", {
-      crossingId: "18L-36R-J",
-    }).ok,
-  );
+  const crossing = sim.crossingOptions(arrival)[0];
+  assert.ok(crossing);
+  assert.ok(sim.command(arrival.id, "cross", { crossingId: crossing.id }).ok);
   until(sim, arrival.id, "atpoint");
-  assert.ok(sim.freeStands(arrival).length);
+  assert.ok(sim.command(arrival.id, "taxi", { stand: stand.id }).ok);
+  until(sim, arrival.id, "parked");
+  assert.equal(arrival.stand, stand.id);
 });
 
 test("malformed airport packages fail before a session can start", () => {

@@ -34,6 +34,13 @@
         <div id="camera-windows" class="camera-windows"></div>
         <div class="tower-tools">
           <button
+            id="tower-tools-handle"
+            class="overlay-drag-handle tower-tools-handle"
+            title="Move tower controls"
+            aria-label="Move tower controls"
+          >
+            <i data-lucide="grip-horizontal"></i></button
+          ><button
             id="tower-cameras"
             title="Airport cameras"
             aria-label="Airport cameras"
@@ -56,19 +63,36 @@
           </button>
         </div>
         <div id="camera-menu" class="camera-menu" role="menu" hidden></div>
+        <section
+          id="flight-dock"
+          class="flight-dock"
+          aria-label="Active flights by status"
+        >
+          <button
+            id="flight-dock-handle"
+            class="overlay-drag-handle flight-dock-handle"
+            title="Move flight cards"
+            aria-label="Move flight cards"
+          >
+            <i data-lucide="grip-horizontal"></i>
+          </button>
+          <div id="flight-dock-content" class="flight-dock-content"></div>
+        </section>
       </section>
-      <div
-        id="view-resizer"
-        class="view-resizer"
-        role="separator"
-        aria-label="Resize 2D control map"
-        aria-orientation="horizontal"
-        tabindex="0"
+      <section
+        id="mini-map"
+        class="map-panel"
+        aria-label="Airport ground movement map"
       >
-        <span></span>
-      </div>
-      <section class="map-panel" aria-label="Airport ground movement map">
         <canvas id="map" aria-label="Airport map" tabindex="0"></canvas>
+        <button
+          id="mini-map-handle"
+          class="mini-map-label overlay-drag-handle"
+          title="Move airport map"
+          aria-label="Move airport map"
+        >
+          <span>VIEW</span><i data-lucide="grip-horizontal"></i>
+        </button>
         <div class="map-heading">
           <span class="eyebrow"></span>
           <h1></h1>
@@ -219,9 +243,8 @@
       <p class="asset-credit">
         A320 model:
         <a href="https://github.com/amvlab/aircraft-models">amvlab</a>
-        (<a href="https://creativecommons.org/licenses/by/4.0/"
-          >CC BY 4.0</a
-        >), modified for Ground Control.
+        (<a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>),
+        modified for Ground Control.
       </p>
     </dialog>
     <dialog id="restart-dialog" aria-labelledby="reset-heading">

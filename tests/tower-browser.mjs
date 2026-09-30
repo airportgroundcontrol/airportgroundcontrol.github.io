@@ -36,6 +36,15 @@ try {
   assert.equal(await page.locator("#tower-panel select").count(), 0);
   assert.equal(await page.locator("#aircraft-panel").count(), 0);
   assert.equal(await page.locator("#aircraft-menu").isHidden(), true);
+  assert.ok((await page.locator(".flight-group").count()) > 0);
+  assert.equal(
+    await page.locator(".flight-card").count(),
+    await page.evaluate(
+      () =>
+        groundControl.sim.planes.filter((plane) => plane.state !== "done")
+          .length,
+    ),
+  );
 
   const scene = await page.evaluate(() => {
     const { towerView: view, sim } = groundControl;
@@ -107,13 +116,90 @@ try {
       header: header.height,
       tower: tower.height,
       map: controlMap.height,
+      mapWidth: controlMap.width,
+      mapBottom: controlMap.bottom,
+      dockBottom: document.getElementById("flight-dock").getBoundingClientRect()
+        .bottom,
     };
   });
   assert.ok(layout.colors > 25);
-  assert.ok(
-    Math.abs(Math.round(layout.header + layout.tower + layout.map) - 960) <= 2,
+  assert.ok(Math.abs(Math.round(layout.header + layout.tower) - 960) <= 2);
+  assert.ok(layout.map >= 230);
+  assert.ok(layout.mapWidth >= 330);
+  assert.ok(layout.mapBottom <= 960 && layout.dockBottom <= 960);
+
+  const miniMap = page.locator("#mini-map");
+  const miniMapBefore = await miniMap.boundingBox();
+  const miniMapHandle = await page.locator("#mini-map-handle").boundingBox();
+  await page.mouse.move(
+    miniMapHandle.x + miniMapHandle.width / 2,
+    miniMapHandle.y + miniMapHandle.height / 2,
   );
-  assert.ok(Math.abs(layout.tower - layout.map) <= 2);
+  await page.mouse.down();
+  await page.mouse.move(miniMapHandle.x + 90, miniMapHandle.y - 145, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  const miniMapMoved = await miniMap.boundingBox();
+  assert.ok(miniMapMoved.x > miniMapBefore.x + 50);
+  assert.ok(miniMapMoved.y < miniMapBefore.y - 110);
+  await page.mouse.move(
+    miniMapMoved.x + miniMapMoved.width - 2,
+    miniMapMoved.y + miniMapMoved.height - 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    miniMapMoved.x + miniMapMoved.width + 48,
+    miniMapMoved.y + miniMapMoved.height + 28,
+    { steps: 4 },
+  );
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  const miniMapResized = await miniMap.boundingBox();
+  assert.ok(miniMapResized.width > miniMapMoved.width + 25);
+  assert.ok(miniMapResized.height > miniMapMoved.height + 15);
+
+  const flightDock = page.locator("#flight-dock");
+  const flightDockBefore = await flightDock.boundingBox();
+  const flightDockHandle = await page
+    .locator("#flight-dock-handle")
+    .boundingBox();
+  await page.mouse.move(
+    flightDockHandle.x + flightDockHandle.width / 2,
+    flightDockHandle.y + flightDockHandle.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(flightDockHandle.x - 80, flightDockHandle.y - 65, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  const flightDockMoved = await flightDock.boundingBox();
+  assert.ok(
+    flightDockMoved.x < flightDockBefore.x - 50,
+    JSON.stringify({ flightDockBefore, flightDockMoved, flightDockHandle }),
+  );
+  assert.ok(
+    flightDockMoved.y < flightDockBefore.y - 35,
+    JSON.stringify({ flightDockBefore, flightDockMoved, flightDockHandle }),
+  );
+
+  const towerTools = page.locator(".tower-tools");
+  const towerToolsBefore = await towerTools.boundingBox();
+  const towerToolsHandle = await page
+    .locator("#tower-tools-handle")
+    .boundingBox();
+  await page.mouse.move(
+    towerToolsHandle.x + towerToolsHandle.width / 2,
+    towerToolsHandle.y + towerToolsHandle.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(towerToolsHandle.x - 100, towerToolsHandle.y + 65, {
+    steps: 4,
+  });
+  await page.mouse.up();
+  const towerToolsMoved = await towerTools.boundingBox();
+  assert.ok(towerToolsMoved.x < towerToolsBefore.x - 70);
+  assert.ok(towerToolsMoved.y > towerToolsBefore.y + 40);
 
   const viewpoint = await page.evaluate(() => {
     groundControl.map.draw();
@@ -220,30 +306,16 @@ try {
   await page.getByRole("button", { name: "Close Terminal 1 Apron" }).click();
   assert.equal(await page.locator(".camera-window").count(), 1);
 
-  const cameraMarker = await page.evaluate(() => {
-    const camera = groundControl.towerView
-      .getCameraViewpoints()
-      .find((item) => item.id === "runway-north");
-    const point = groundControl.map.screen(camera),
-      bounds = groundControl.map.canvas.getBoundingClientRect();
-    return { x: bounds.left + point.x, y: bounds.top + point.y };
-  });
-  await page.mouse.click(cameraMarker.x, cameraMarker.y);
+  await page.locator("#tower-cameras").click();
+  await page
+    .getByRole("checkbox", { name: "Runway 18 North" })
+    .setChecked(true);
   await page.waitForFunction(() =>
     groundControl.towerView.feeds.has("runway-north"),
   );
   assert.equal(await page.locator(".camera-window").count(), 2);
-
-  const resizeHandle = page.locator("#view-resizer");
-  const handleBox = await resizeHandle.boundingBox();
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + 4);
-  await page.mouse.down();
-  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y - 70);
-  await page.mouse.up();
-  await page.waitForTimeout(100);
-  assert.ok(
-    (await page.locator("#map").boundingBox()).height > layout.map + 60,
-  );
+  await page.locator("#tower-cameras").click();
+  assert.equal(await page.locator("#view-resizer").count(), 0);
 
   const towerBox = await page.locator("#tower-scene").boundingBox();
   const cameraBefore = await page.evaluate(() => ({
@@ -273,47 +345,40 @@ try {
     const plane = groundControl.sim.planes.find((candidate) =>
       ["gate", "parked"].includes(candidate.state),
     );
-    const point = groundControl.map.aircraftScreen(plane);
-    const bounds = groundControl.map.canvas.getBoundingClientRect();
     return {
       id: plane.id,
-      x: bounds.left + point.x,
-      y: bounds.top + point.y,
       expectedYaw: Math.atan2(
         plane.x - groundControl.towerView.tower.x,
         plane.y - groundControl.towerView.tower.y,
       ),
     };
   });
-  await page.mouse.dblclick(focusedAircraft.x, focusedAircraft.y);
+  await page.locator(`[data-flight-id="${focusedAircraft.id}"]`).dblclick();
   await page.waitForFunction(
     (expected) => Math.abs(groundControl.towerView.yaw - expected) < 0.001,
     focusedAircraft.expectedYaw,
   );
+  await page.keyboard.press("Escape");
   assert.equal(await page.locator("#aircraft-menu").isHidden(), true);
 
   const aircraft = await page.evaluate(() => {
     const plane = groundControl.sim.planes.find((candidate) =>
       ["gate", "parked"].includes(candidate.state),
     );
-    const point = groundControl.map.aircraftScreen(plane);
-    const bounds = groundControl.map.canvas.getBoundingClientRect();
     return {
       id: plane.id,
       state: plane.state,
-      x: bounds.left + point.x,
-      y: bounds.top + point.y,
     };
   });
-  await page.mouse.click(aircraft.x, aircraft.y);
+  await page.locator(`[data-flight-id="${aircraft.id}"]`).click();
   await page.waitForFunction(
     () => !document.getElementById("aircraft-menu").hidden,
   );
   const menuBox = await page.locator("#aircraft-menu").boundingBox();
-  const mapBox = await page.locator("#map").boundingBox();
+  const towerPanel = await page.locator("#tower-panel").boundingBox();
+  const dockBox = await page.locator("#flight-dock").boundingBox();
   assert.ok(
-    menuBox.y >= mapBox.y &&
-      menuBox.y + menuBox.height <= mapBox.y + mapBox.height,
+    menuBox.y >= towerPanel.y && menuBox.y + menuBox.height <= dockBox.y,
   );
   if (aircraft.state === "gate") {
     assert.equal(
@@ -324,29 +389,33 @@ try {
   await page.keyboard.press("Escape");
   assert.equal(await page.locator("#aircraft-menu").isHidden(), true);
 
-  const mapViews = {
-    "3d": { x: -1210, y: 640, zoom: 0.31 },
-    "2d": { x: 830, y: -460, zoom: 0.42 },
-  };
-  await page.evaluate((camera) => {
-    groundControl.map.camera = camera;
-    groundControl.map.draw();
-  }, mapViews["3d"]);
+  const map2DView = { x: 830, y: -460, zoom: 0.42 };
   await page.screenshot({ path: artifact("tower-desktop.png") });
   await page.locator('[data-view="2d"]').click();
   assert.equal(await page.locator("body").getAttribute("class"), "");
   assert.equal(await page.locator("#tower-panel").isHidden(), true);
   assert.equal(await page.evaluate(() => groundControl.viewMode), "2d");
-  assert.ok((await page.locator("#map").boundingBox()).height > 800);
+  const fullMap = await page.locator("#map").boundingBox();
+  assert.ok(fullMap.height > 800);
+  assert.ok(fullMap.width > 1400);
   await page.evaluate((camera) => {
     groundControl.map.camera = camera;
     groundControl.map.draw();
-  }, mapViews["2d"]);
+  }, map2DView);
   await page.locator('[data-view="3d"]').click();
   assert.equal(await page.evaluate(() => groundControl.viewMode), "3d");
-  assert.deepEqual(
-    await page.evaluate(() => groundControl.map.camera),
-    mapViews["3d"],
+  assert.ok(
+    await page.evaluate(() => {
+      const view = groundControl.towerView.getViewpoint(),
+        point = groundControl.map.screen(view);
+      return (
+        groundControl.map.camera.zoom > 0 &&
+        point.x >= 0 &&
+        point.x <= groundControl.map.width &&
+        point.y >= 0 &&
+        point.y <= groundControl.map.height
+      );
+    }),
   );
 
   await page.locator("#airport-button").click();
@@ -373,7 +442,24 @@ try {
   const savedViews = await page.evaluate(() => {
     groundControl.sim.score = 3210;
     groundControl.session.save();
-    return groundControl.towerView.captureViewState();
+    const bounds = (selector) => {
+      const box = document.querySelector(selector).getBoundingClientRect();
+      return {
+        x: Math.round(box.x),
+        y: Math.round(box.y),
+        width: Math.round(box.width),
+        height: Math.round(box.height),
+      };
+    };
+    return {
+      tower: groundControl.towerView.captureViewState(),
+      overlays: {
+        map: bounds("#mini-map"),
+        dock: bounds("#flight-dock"),
+        tools: bounds(".tower-tools"),
+        camera: bounds('[data-camera="t2-apron"]'),
+      },
+    };
   });
   await page.reload();
   await page.waitForFunction(
@@ -383,23 +469,36 @@ try {
       groundControl.towerView?.feeds.size === 2,
   );
   assert.deepEqual(
-    await page.evaluate(() => groundControl.map.camera),
-    mapViews["3d"],
+    await page.evaluate(() => groundControl.towerView.captureViewState()),
+    savedViews.tower,
   );
   assert.deepEqual(
-    await page.evaluate(() => groundControl.towerView.captureViewState()),
-    savedViews,
+    await page.evaluate(() => {
+      const bounds = (selector) => {
+        const box = document.querySelector(selector).getBoundingClientRect();
+        return {
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          width: Math.round(box.width),
+          height: Math.round(box.height),
+        };
+      };
+      return {
+        map: bounds("#mini-map"),
+        dock: bounds("#flight-dock"),
+        tools: bounds(".tower-tools"),
+        camera: bounds('[data-camera="t2-apron"]'),
+      };
+    }),
+    savedViews.overlays,
   );
   await page.locator('[data-view="2d"]').click();
   assert.deepEqual(
     await page.evaluate(() => groundControl.map.camera),
-    mapViews["2d"],
+    map2DView,
   );
   await page.locator('[data-view="3d"]').click();
-  assert.deepEqual(
-    await page.evaluate(() => groundControl.map.camera),
-    mapViews["3d"],
-  );
+  assert.ok((await page.evaluate(() => groundControl.map.camera.zoom)) > 0);
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(100);
@@ -409,12 +508,19 @@ try {
       .getElementById("tower-panel")
       .getBoundingClientRect();
     const map = document.getElementById("map").getBoundingClientRect();
+    const dock = document.getElementById("flight-dock").getBoundingClientRect();
     return {
       overflow: document.documentElement.scrollWidth > innerWidth,
       width: groundControl.towerView.canvas.clientWidth,
-      total: Math.round(header.height + tower.height + map.height),
+      total: Math.round(header.height + tower.height),
       towerHeight: tower.height,
+      mapWidth: map.width,
       mapHeight: map.height,
+      dock,
+      tools: document
+        .querySelector(".tower-tools")
+        .getBoundingClientRect()
+        .toJSON(),
       cameraWindows: [...document.querySelectorAll(".camera-window")].map(
         (element) => element.getBoundingClientRect().toJSON(),
       ),
@@ -423,7 +529,12 @@ try {
   assert.equal(mobile.overflow, false);
   assert.equal(mobile.width, 390);
   assert.ok(Math.abs(mobile.total - 844) <= 2);
-  assert.ok(Math.abs(mobile.towerHeight - mobile.mapHeight) <= 2);
+  assert.ok(mobile.mapWidth >= 218 && mobile.mapWidth <= 374);
+  assert.ok(mobile.mapHeight >= 153 && mobile.mapHeight <= 776);
+  assert.ok(mobile.dock.left >= 0 && mobile.dock.right <= 390);
+  assert.ok(mobile.dock.bottom <= 844);
+  assert.ok(mobile.tools.left >= 0 && mobile.tools.right <= 390);
+  assert.ok(mobile.tools.top >= 0 && mobile.tools.bottom <= 844);
   assert.ok(
     mobile.cameraWindows.every(
       (window) => window.left >= 0 && window.right <= 390,
@@ -582,6 +693,70 @@ try {
     { timeout: 30_000 },
   );
   await orlando.evaluate(() => groundControl.setPaused(true));
+  const stagedArrivalId = await orlando.evaluate(() => {
+    const { sim } = groundControl;
+    sim.planes = [];
+    sim.nextArrival = sim.nextDeparture = Infinity;
+    sim.configureRunways([
+      {
+        runwayId: "18R-36L",
+        endId: "18R",
+        arrivals: true,
+        departures: false,
+      },
+    ]);
+    sim.spawnArrival("MCO411", "A320");
+    const plane = sim.planes[0],
+      exit = sim.landingOptions(plane)[0],
+      node = sim.nodes.get(exit.path.at(-1));
+    Object.assign(plane, {
+      state: "inbound",
+      airborne: false,
+      node: node.id,
+      x: node.x,
+      y: node.y,
+      speed: 0,
+      route: [],
+      stand: null,
+    });
+    groundControl.select(plane.id);
+    return plane.id;
+  });
+  assert.ok(
+    (await orlando.locator("#stand-select option:not([disabled])").count()) > 1,
+  );
+  await orlando.getByRole("menuitem", { name: "Plan taxi route" }).click();
+  assert.match(
+    await orlando.locator(".route-summary").innerText(),
+    /Hold short .* then Stand/,
+  );
+  const stagedClearance = orlando.getByRole("menuitem", {
+    name: "Issue taxi clearance",
+  });
+  assert.equal(await stagedClearance.isEnabled(), true);
+  await stagedClearance.click();
+  const stagedState = await orlando.evaluate((id) => {
+    const plane = groundControl.sim.planes.find((item) => item.id === id);
+    return {
+      state: plane.state,
+      taxiTarget: plane.taxiTarget,
+      assignedStand: Boolean(plane.stand),
+      hold: plane.holdLabel,
+    };
+  }, stagedArrivalId);
+  assert.deepEqual(
+    {
+      state: stagedState.state,
+      taxiTarget: stagedState.taxiTarget,
+      assignedStand: stagedState.assignedStand,
+    },
+    {
+      state: "taxiin",
+      taxiTarget: "hold",
+      assignedStand: true,
+    },
+  );
+  assert.match(stagedState.hold, /18L-36R/);
   const orlandoScene = await orlando.evaluate(() => {
     const view = groundControl.towerView;
     view.render();

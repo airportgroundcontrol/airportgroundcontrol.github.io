@@ -986,19 +986,25 @@ export class GroundSim {
     const components = this.groundComponentCache.get(type);
     return components.has(from) && components.get(from) === components.get(to);
   }
-  hasControlledGroundRoute(from, to, type = null) {
+  hasControlledGroundRoute(
+    from,
+    to,
+    type = null,
+    excludedCrossings = new Set(),
+  ) {
     const connected = (a, b) =>
       type ? this.hasGroundRoute(a, b, type) : this.path(a, b).length > 0;
     if (connected(from, to)) return true;
     const crossings = (this.data.operations.runwayCrossings || []).filter(
       (crossing) =>
-        !type ||
-        crossing.path.slice(1).every((id, index) => {
-          const edge =
-            this.graph.getLink(crossing.path[index], id) ||
-            this.graph.getLink(id, crossing.path[index]);
-          return edge && edgeAllows(this.data, edge.data, type);
-        }),
+        !excludedCrossings.has(crossing.id) &&
+        (!type ||
+          crossing.path.slice(1).every((id, index) => {
+            const edge =
+              this.graph.getLink(crossing.path[index], id) ||
+              this.graph.getLink(id, crossing.path[index]);
+            return edge && edgeAllows(this.data, edge.data, type);
+          })),
     );
     const queue = [from],
       visited = new Set([from]);
@@ -1092,6 +1098,51 @@ export class GroundSim {
           ...points,
         ]
       : points;
+  }
+  taxiPlan(p, destination, waypoints = []) {
+    const direct = this.plan(p, destination, waypoints);
+    if (direct.length) return { points: direct, crossing: null };
+    const controlledDestination =
+      this.data.stands.find((stand) => stand.node === destination)?.exit ||
+      destination;
+    let best = null;
+    for (const crossing of this.data.operations.runwayCrossings || []) {
+      const compatible = crossing.path.slice(1).every((id, index) => {
+        const edge =
+          this.graph.getLink(crossing.path[index], id) ||
+          this.graph.getLink(id, crossing.path[index]);
+        return edge && edgeAllows(this.data, edge.data, p.type);
+      });
+      if (!compatible) continue;
+      for (const path of [crossing.path, [...crossing.path].reverse()]) {
+        const entry = path[0],
+          exit = path.at(-1),
+          points = this.plan(p, entry, waypoints);
+        if (
+          points.length < 2 ||
+          !this.hasControlledGroundRoute(
+            exit,
+            controlledDestination,
+            p.type,
+            new Set([crossing.id]),
+          )
+        )
+          continue;
+        let length = 0,
+          previous = p;
+        for (const point of points) {
+          length += distance(previous, point);
+          previous = point;
+        }
+        if (!best || length < best.length)
+          best = {
+            points,
+            crossing: { ...crossing, path },
+            length,
+          };
+      }
+    }
+    return best || { points: [], crossing: null };
   }
   routeNames(points) {
     const names = [];
@@ -1390,26 +1441,37 @@ export class GroundSim {
       } else if (arriving) {
         const s = this.stands.get(stand);
         if (!s) return reject("Choose a stand.");
-        const reason = this.standReason(p, stand);
+        const reason = this.standReason(p, stand, { controlled: true });
         if (reason) return reject(reason + ".");
         target = s.node;
       }
-      let points = this.plan(p, target, waypoints);
-      if (!arriving || holdingPoint)
+      const staged =
+        arriving && !holdingPoint ? this.taxiPlan(p, target, waypoints) : null;
+      let points = staged ? staged.points : this.plan(p, target, waypoints);
+      if (!arriving || holdingPoint || staged?.crossing)
         points = trimRouteEnd(points, aircraftType(p.type).length / 2 + 3);
       if (points.length < 2)
         return reject("No clear taxi route to that destination.");
       if (arriving && !holdingPoint) p.stand = stand;
       if (!arriving && !holdingPoint) p.runwayKey = runway.key;
-      p.taxiTarget = holdingPoint ? "hold" : arriving ? "stand" : "runway";
-      p.holdLabel = holdingPoint ? this.nodes.get(holdingPoint).ref : null;
+      const crossingHold = staged?.crossing?.path[0];
+      p.taxiTarget =
+        holdingPoint || crossingHold ? "hold" : arriving ? "stand" : "runway";
+      p.holdLabel = crossingHold
+        ? this.nodes.get(crossingHold).ref
+        : holdingPoint
+          ? this.nodes.get(holdingPoint).ref
+          : null;
       p.holdLimit = null;
       p.holdReached = false;
       p.trafficOrder = null;
       p.trafficWaiting = null;
       this.setRoute(p, points, arriving ? "taxiin" : "taxi", 8);
-      p.destination = target;
-      p.clearance = this.routeNames(points).join(" - ");
+      p.destination = crossingHold || target;
+      p.clearance = [
+        ...this.routeNames(points),
+        ...(crossingHold ? [`Hold short ${p.holdLabel}`] : []),
+      ].join(" - ");
       return { ok: true };
     }
     if (action === "cross") {

@@ -48,6 +48,7 @@ export class AirportMap {
     this.preview = [];
     this.waypoints = [];
     this.labels = true;
+    this.compact = false;
     this.camera = { x: 0, y: 0, zoom: 1 };
     this.onSelect = onSelect;
     this.onWaypoint = onWaypoint;
@@ -80,12 +81,11 @@ export class AirportMap {
     this.draw();
   }
   fit() {
-    const header = document
-      .querySelector(".topbar")
-      .getBoundingClientRect().height;
+    const compact = document.body.classList.contains("view-3d"),
+      header = document.querySelector(".topbar").getBoundingClientRect().height;
     const width = this.width;
-    const top = header + 20;
-    const bottom = this.height - 55;
+    const top = compact ? 12 : header + 20;
+    const bottom = this.height - (compact ? 12 : 55);
     const bounds = this.sim.data.operations.map.bounds;
     const zoom = Math.min(
       width / (bounds.maxX - bounds.minX),
@@ -525,7 +525,7 @@ export class AirportMap {
           airport ? "#a7a9ad" : "#65676c55",
         );
       }
-    for (const runway of this.sim.data.operations.runways) {
+    for (const runway of this.compact ? [] : this.sim.data.operations.runways) {
       const [start, end] = runway.ends.map((item) => item.position),
         heading = Math.atan2(end.y - start.y, end.x - start.x);
       for (const [i, n] of [start, end].entries()) {
@@ -542,7 +542,7 @@ export class AirportMap {
         c.restore();
       }
     }
-    if (this.labels) {
+    if (this.labels && !this.compact) {
       const placed = [];
       for (const f of fs) {
         if (f.type !== "taxiway" || !f.ref) continue;
@@ -570,6 +570,7 @@ export class AirportMap {
         this.camera.y,
         z,
         this.labels,
+        this.compact,
       ].join(":");
     if (staticKey !== this.staticKey) {
       this.drawStaticLayer();
@@ -589,7 +590,7 @@ export class AirportMap {
           "#efb76155",
           Math.max(10, 45 * z),
         );
-    if (this.labels) {
+    if (this.labels && !this.compact) {
       const selectedAircraft = this.sim.planes.find(
           (q) => q.id === this.selected,
         ),
@@ -648,12 +649,13 @@ export class AirportMap {
         c.stroke();
       }
       if (
-        focused ||
-        this.sim.activeRunways.some(
-          (runway) => runway.departureHold === n.id,
-        ) ||
-        ((z > 0.65 || routeHolds.has(n.id)) &&
-          !holdLabels.some((p) => distance(p, point) < 32))
+        !this.compact &&
+        (focused ||
+          this.sim.activeRunways.some(
+            (runway) => runway.departureHold === n.id,
+          ) ||
+          ((z > 0.65 || routeHolds.has(n.id)) &&
+            !holdLabels.some((p) => distance(p, point) < 32)))
       ) {
         this.label(n.ref, point.x + 10, point.y + 16, "#f1d47a", 9, "#292b2f");
         holdLabels.push(point);
@@ -716,16 +718,18 @@ export class AirportMap {
           textWidth / 2 + 6,
           Math.min(this.width - textWidth / 2 - 6, s.x),
         );
-        this.label(
-          text,
-          labelX,
-          s.y - 14,
-          aircraftColors.landing,
-          size,
-          "#1b1c1f",
-        );
-        if (runwayBadge)
-          this.badge(runwayBadge, labelX, s.y - 29, aircraftColors.landing);
+        if (!this.compact) {
+          this.label(
+            text,
+            labelX,
+            s.y - 14,
+            aircraftColors.landing,
+            size,
+            "#1b1c1f",
+          );
+          if (runwayBadge)
+            this.badge(runwayBadge, labelX, s.y - 29, aircraftColors.landing);
+        }
         c.save();
         c.translate(s.x, s.y);
         c.rotate(p.angle);
@@ -747,6 +751,7 @@ export class AirportMap {
       if (requestsAction(p)) c.globalAlpha = 0.72 + 0.28 * pulse;
       drawAircraft(c, p.type, z, color);
       c.restore();
+      if (this.compact) continue;
       const size = aircraftPixels(p.type, z);
       const labelGap = Math.max(
         25,
@@ -798,7 +803,7 @@ export class AirportMap {
           8,
         );
     }
-    this.drawCameraViewpoints(this.cameraViewpoints());
+    if (!this.compact) this.drawCameraViewpoints(this.cameraViewpoints());
     this.drawViewpoint(this.viewpoint?.());
   }
 }

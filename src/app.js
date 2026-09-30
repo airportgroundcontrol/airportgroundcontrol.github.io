@@ -25,11 +25,12 @@ import {
   SlidersHorizontal,
   ScanSearch,
   Cctv,
+  GripHorizontal,
 } from "lucide";
 import { airportCatalog, defaultAirport } from "./airports/catalog.js";
 import { populateAirportUI } from "./ui/airport.js";
 import { flightStatus, requestsAction, orderedFlights } from "./sim.js";
-import { AirportMap } from "./map.js";
+import { AirportMap, aircraftStatusColor, formatArrivalETA } from "./map.js";
 import { GameSession } from "./session/game-session.js";
 import { acquireWriter } from "./session/writer-lease.js";
 import { TowerView } from "./view-3d.js";
@@ -68,6 +69,7 @@ const icons = {
   SlidersHorizontal,
   ScanSearch,
   Cctv,
+  GripHorizontal,
 };
 const refreshIcons = () =>
   createIcons({ icons, attrs: { "stroke-width": 1.7 } });
@@ -113,9 +115,11 @@ const cameraWindows = new Map();
 let planning = false,
   waypoints = [],
   destination = "",
+  plannedCrossing = null,
   menuOpen = false,
   menuAnchor = null;
 let lastMenu = "",
+  lastFlightDock = "",
   toastTimer,
   modalPaused = null;
 let menuMode = "",
@@ -140,6 +144,172 @@ const canPlan = (p) =>
 const stateText = flightStatus;
 
 const supports3D = () => airportData.views?.includes("3d");
+const overlayLayoutKey = `ground-control:overlay-layout:${airportData.id}`;
+let overlayLayouts = (() => {
+  try {
+    const value = JSON.parse(localStorage.getItem(overlayLayoutKey));
+    return value && typeof value === "object" ? value : {};
+  } catch {
+    return {};
+  }
+})();
+
+function persistOverlayLayouts() {
+  try {
+    localStorage.setItem(overlayLayoutKey, JSON.stringify(overlayLayouts));
+  } catch {}
+}
+
+function overlayOptions(id) {
+  if (id === "mini-map")
+    return { minWidth: 220, minHeight: 155, saveHeight: true };
+  if (id === "flight-dock")
+    return { minWidth: 280, minHeight: 56, saveHeight: false, minTop: 34 };
+  if (id === "tower-tools")
+    return { minWidth: 150, minHeight: 34, saveSize: false };
+  return { minWidth: 170, minHeight: 100, saveHeight: true };
+}
+
+function captureOverlayLayout(id, element) {
+  if (!element || viewMode !== "3d") return;
+  const panel = $("tower-panel").getBoundingClientRect(),
+    bounds = element.getBoundingClientRect(),
+    options = overlayOptions(id);
+  if (!bounds.width || !bounds.height) return;
+  const layout = {
+    x: Math.round(bounds.left - panel.left),
+    y: Math.round(bounds.top - panel.top),
+  };
+  if (options.saveSize !== false) layout.width = Math.round(bounds.width);
+  if (options.saveHeight !== false) layout.height = Math.round(bounds.height);
+  overlayLayouts[id] = layout;
+  persistOverlayLayouts();
+}
+
+function applyOverlayLayout(id, element) {
+  const layout = overlayLayouts[id];
+  if (!layout || !element || viewMode !== "3d") return false;
+  const panel = $("tower-panel").getBoundingClientRect(),
+    options = overlayOptions(id),
+    fixed = getComputedStyle(element).position === "fixed";
+  if (!panel.width || !panel.height) return false;
+  if (options.saveSize !== false && Number.isFinite(layout.width))
+    element.style.width = `${Math.max(
+      options.minWidth,
+      Math.min(panel.width - 16, layout.width),
+    )}px`;
+  if (options.saveHeight !== false && Number.isFinite(layout.height))
+    element.style.height = `${Math.max(
+      options.minHeight,
+      Math.min(panel.height - 16, layout.height),
+    )}px`;
+  const width = element.offsetWidth,
+    height = element.offsetHeight,
+    x = Math.max(8, Math.min(panel.width - width - 8, Number(layout.x) || 0)),
+    y = Math.max(
+      options.minTop || 8,
+      Math.min(panel.height - height - 8, Number(layout.y) || 0),
+    );
+  element.style.right = "auto";
+  element.style.bottom = "auto";
+  element.style.left = `${fixed ? panel.left + x : x}px`;
+  element.style.top = `${fixed ? panel.top + y : y}px`;
+  element.dataset.moved = "true";
+  return true;
+}
+
+function bringOverlayToFront(element) {
+  const cameraLayer = $("camera-windows"),
+    layers = [
+      $("mini-map"),
+      $("flight-dock"),
+      document.querySelector(".tower-tools"),
+      cameraLayer,
+    ],
+    active = element.classList.contains("camera-window")
+      ? cameraLayer
+      : element;
+  for (const layer of layers) layer.style.removeProperty("z-index");
+  active.style.zIndex = "18";
+}
+
+function bindOverlayDrag(id, element, handle) {
+  let drag = null;
+  element.addEventListener("pointerdown", () => bringOverlayToFront(element));
+  handle.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const panel = $("tower-panel").getBoundingClientRect(),
+      bounds = element.getBoundingClientRect();
+    handle.setPointerCapture(event.pointerId);
+    drag = {
+      dx: event.clientX - bounds.left,
+      dy: event.clientY - bounds.top,
+      fixed: getComputedStyle(element).position === "fixed",
+    };
+    element.style.width = `${bounds.width}px`;
+    element.style.right = "auto";
+    element.style.bottom = "auto";
+    element.dataset.moved = "true";
+    element.classList.add("overlay-moving");
+    const x = bounds.left - panel.left,
+      y = bounds.top - panel.top;
+    element.style.left = `${drag.fixed ? panel.left + x : x}px`;
+    element.style.top = `${drag.fixed ? panel.top + y : y}px`;
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!drag) return;
+    const panel = $("tower-panel").getBoundingClientRect(),
+      options = overlayOptions(id),
+      x = Math.max(
+        8,
+        Math.min(
+          panel.width - element.offsetWidth - 8,
+          event.clientX - panel.left - drag.dx,
+        ),
+      ),
+      y = Math.max(
+        options.minTop || 8,
+        Math.min(
+          panel.height - element.offsetHeight - 8,
+          event.clientY - panel.top - drag.dy,
+        ),
+      );
+    element.style.left = `${drag.fixed ? panel.left + x : x}px`;
+    element.style.top = `${drag.fixed ? panel.top + y : y}px`;
+  });
+  for (const type of ["pointerup", "pointercancel"])
+    handle.addEventListener(type, () => {
+      if (!drag) return;
+      drag = null;
+      element.classList.remove("overlay-moving");
+      captureOverlayLayout(id, element);
+      if (id === "tower-tools" && !$("camera-menu").hidden)
+        positionCameraMenu();
+    });
+}
+
+function bindOverlayResize(id, element, onResize) {
+  let frame = 0;
+  new ResizeObserver(() => {
+    if (viewMode !== "3d") return;
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(() => {
+      onResize?.();
+      captureOverlayLayout(id, element);
+    });
+  }).observe(element);
+}
+
+function clampOverlayLayouts() {
+  applyOverlayLayout("mini-map", $("mini-map"));
+  applyOverlayLayout("flight-dock", $("flight-dock"));
+  applyOverlayLayout("tower-tools", document.querySelector(".tower-tools"));
+  for (const [id, element] of cameraWindows)
+    applyOverlayLayout(`camera:${id}`, element);
+}
+
 const mapViewportPoint = (point) => {
   const bounds = map.canvas.getBoundingClientRect();
   return { x: point.x + bounds.left, y: point.y + bounds.top };
@@ -173,8 +343,8 @@ function positionCameraWindow(windowElement) {
 }
 
 function layoutCameraWindows() {
-  for (const windowElement of cameraWindows.values())
-    if (windowElement.dataset.moved !== "true")
+  for (const [id, windowElement] of cameraWindows)
+    if (!applyOverlayLayout(`camera:${id}`, windowElement))
       positionCameraWindow(windowElement);
 }
 
@@ -211,7 +381,12 @@ function bindCameraDrag(windowElement) {
   });
   for (const event of ["pointerup", "pointercancel"])
     handle.addEventListener(event, () => {
+      if (!drag) return;
       drag = null;
+      captureOverlayLayout(
+        `camera:${windowElement.dataset.camera}`,
+        windowElement,
+      );
     });
 }
 
@@ -243,8 +418,13 @@ function ensureCameraWindow(id) {
   header.append(title, close);
   windowElement.append(canvas, header);
   $("camera-windows").append(windowElement);
+  windowElement.addEventListener("pointerdown", () =>
+    bringOverlayToFront(windowElement),
+  );
   bindCameraDrag(windowElement);
   cameraWindows.set(id, windowElement);
+  applyOverlayLayout(`camera:${id}`, windowElement);
+  bindOverlayResize(`camera:${id}`, windowElement);
   towerView.attachCamera(id, canvas);
   refreshIcons();
 }
@@ -275,13 +455,58 @@ function toggleCamera(id) {
   return setCameraFeed(id, !cameraFeedIds.has(id));
 }
 
+function positionCameraMenu() {
+  const button = $("tower-cameras"),
+    menu = $("camera-menu"),
+    panel = $("tower-panel").getBoundingClientRect(),
+    bounds = button.getBoundingClientRect(),
+    width = menu.offsetWidth || 220,
+    x = Math.max(
+      8,
+      Math.min(panel.width - width - 8, bounds.left - panel.left),
+    ),
+    y = Math.max(8, Math.min(panel.height - 44, bounds.bottom - panel.top + 6));
+  menu.style.right = "auto";
+  menu.style.left = `${x}px`;
+  menu.style.top = `${y}px`;
+}
+
+function bindOverlayControls() {
+  const miniMap = $("mini-map"),
+    flightDock = $("flight-dock"),
+    towerTools = document.querySelector(".tower-tools");
+  bindOverlayDrag("mini-map", miniMap, $("mini-map-handle"));
+  bindOverlayDrag("flight-dock", flightDock, $("flight-dock-handle"));
+  bindOverlayDrag("tower-tools", towerTools, $("tower-tools-handle"));
+  bindOverlayResize("mini-map", miniMap, () => {
+    if (viewMode === "3d") map.fit();
+  });
+}
+
 function setViewMode(next, { remember = true } = {}) {
   if (next === "3d" && !supports3D()) return false;
   if (!map || !sim) return false;
   viewCameras[viewMode] = { ...map.camera };
   viewMode = next;
+  map.compact = next === "3d";
   document.body.classList.toggle("view-3d", next === "3d");
-  $("tower-panel").hidden = next !== "3d";
+  const towerPanel = $("tower-panel"),
+    miniMap = $("mini-map");
+  if (next === "3d") towerPanel.append(miniMap);
+  else {
+    document.querySelector("main.workspace").append(miniMap);
+    for (const property of [
+      "width",
+      "height",
+      "left",
+      "top",
+      "right",
+      "bottom",
+    ])
+      miniMap.style.removeProperty(property);
+    delete miniMap.dataset.moved;
+  }
+  towerPanel.hidden = next !== "3d";
   for (const button of document.querySelectorAll("[data-view]")) {
     const active = button.dataset.view === next;
     button.classList.toggle("active", active);
@@ -291,7 +516,10 @@ function setViewMode(next, { remember = true } = {}) {
     towerView = new TowerView(
       $("tower-scene"),
       sim,
-      (id) => towerView.setSelected(id, true),
+      (id, anchor) => {
+        select(id, null, anchor);
+        towerView.setSelected(id, true);
+      },
       { labelRoot: $("tower-labels"), viewState: restoredTowerView },
     );
     map.viewpoint = () => (viewMode === "3d" ? towerView.getViewpoint() : null);
@@ -300,18 +528,20 @@ function setViewMode(next, { remember = true } = {}) {
     map.onCamera = toggleCamera;
   }
   if (next === "3d") for (const id of cameraFeedIds) ensureCameraWindow(id);
+  if (next === "3d") clampOverlayLayouts();
   towerView?.setSelected(selected);
   $("camera-menu").hidden = true;
   $("tower-cameras").setAttribute("aria-expanded", "false");
   renderCameraMenu();
   closeMenu();
-  const nextCamera = viewCameras[next];
+  const nextCamera = next === "2d" ? viewCameras[next] : null;
   if (nextCamera) map.camera = { ...nextCamera };
   requestAnimationFrame(() => {
     map.resize();
-    if (!nextCamera) map.fit();
+    if (next === "3d" || !nextCamera) map.fit();
     map.draw();
     towerView?.resize();
+    if (next === "3d") clampOverlayLayouts();
   });
   const url = new URL(location.href);
   if (next === "3d") url.searchParams.set("view", "3d");
@@ -329,7 +559,7 @@ function bindViewControls() {
   const button3D = toggle.querySelector('[data-view="3d"]');
   button3D.disabled = !supports3D();
   button3D.title = supports3D()
-    ? "Tower view with 2D controls"
+    ? "3D tower view"
     : "3D tower view is not available for this airport yet";
   toggle.querySelectorAll("button").forEach((button) => {
     button.onclick = () => setViewMode(button.dataset.view);
@@ -341,6 +571,7 @@ function bindViewControls() {
       open = menu.hidden;
     menu.hidden = !open;
     $("tower-cameras").setAttribute("aria-expanded", String(open));
+    if (open) positionCameraMenu();
   };
   document.addEventListener("pointerdown", (event) => {
     if (
@@ -363,41 +594,6 @@ function bindViewControls() {
     towerView?.resetView();
     $("tower-binoculars").classList.remove("active");
   };
-  const setMapHeight = (height) => {
-    const maximum = Math.max(
-      180,
-      innerHeight - 180 - $("tower-panel").offsetTop,
-    );
-    const value = Math.round(Math.max(180, Math.min(maximum, height)));
-    document.documentElement.style.setProperty(
-      "--control-map-height",
-      `${value}px`,
-    );
-    $("view-resizer").setAttribute("aria-valuenow", String(value));
-  };
-  let resize = null;
-  $("view-resizer").addEventListener("pointerdown", (event) => {
-    $("view-resizer").setPointerCapture(event.pointerId);
-    resize = {
-      y: event.clientY,
-      height: $("map").getBoundingClientRect().height,
-    };
-  });
-  $("view-resizer").addEventListener("pointermove", (event) => {
-    if (resize) setMapHeight(resize.height + resize.y - event.clientY);
-  });
-  for (const event of ["pointerup", "pointercancel"])
-    $("view-resizer").addEventListener(event, () => {
-      resize = null;
-    });
-  $("view-resizer").addEventListener("keydown", (event) => {
-    if (!["ArrowUp", "ArrowDown"].includes(event.key)) return;
-    event.preventDefault();
-    setMapHeight(
-      $("map").getBoundingClientRect().height +
-        (event.key === "ArrowUp" ? 24 : -24),
-    );
-  });
 }
 
 function readView() {
@@ -442,6 +638,7 @@ function clearPlan() {
   planning = false;
   waypoints = [];
   destination = "";
+  plannedCrossing = null;
   runwayChoice = "";
   if (map) {
     map.preview = [];
@@ -597,7 +794,7 @@ for (const dialog of document.querySelectorAll("dialog")) {
 function usableWidth() {
   return innerWidth;
 }
-function select(id, anchor) {
+function select(id, anchor, viewportAnchor = null) {
   const p = sim.planes.find((p) => p.id === id && p.state !== "done");
   if (!p) return;
   if (selected !== id) {
@@ -611,7 +808,7 @@ function select(id, anchor) {
   menuOpen = true;
   document.body.classList.add("context-open");
   const mapBounds = map.canvas.getBoundingClientRect();
-  if (!anchor) {
+  if (!anchor && !viewportAnchor && viewMode !== "3d") {
     const point = mapViewportPoint(map.screen(p));
     const top = document
       .querySelector(".topbar")
@@ -626,9 +823,9 @@ function select(id, anchor) {
       map.camera.y = p.y;
     }
   }
-  menuAnchor = anchor
-    ? mapViewportPoint(anchor)
-    : mapViewportPoint(map.screen(p));
+  menuAnchor =
+    viewportAnchor ||
+    (anchor ? mapViewportPoint(anchor) : mapViewportPoint(map.screen(p)));
   lastMenu = "";
   render();
   $("aircraft-menu").focus({ preventScroll: true });
@@ -637,19 +834,35 @@ function positionMenu() {
   if (!menuOpen) return;
   const menu = $("aircraft-menu");
   const anchor = menuAnchor || mapViewportPoint(map.screen(selectedPlane()));
-  const bounds = map.canvas.getBoundingClientRect();
+  const bounds =
+    viewMode === "3d"
+      ? $("tower-panel").getBoundingClientRect()
+      : map.canvas.getBoundingClientRect();
   const top = Math.max(
     document.querySelector(".topbar").getBoundingClientRect().bottom + 10,
     bounds.top + 10,
   );
-  const right = Math.max(menu.offsetWidth + 24, bounds.right - 12);
-  let x = anchor.x + 26;
+  const right = Math.max(menu.offsetWidth + 24, bounds.right - 12),
+    bottom =
+      viewMode === "3d"
+        ? Math.min(
+            bounds.bottom - 12,
+            $("flight-dock").getBoundingClientRect().top - 8,
+            document.querySelector(".map-panel").getBoundingClientRect().top -
+              8,
+          )
+        : bounds.bottom - 12;
+  let x =
+    anchor.placement === "above"
+      ? anchor.x - menu.offsetWidth / 2
+      : anchor.x + 26;
   if (x + menu.offsetWidth > right) x = anchor.x - menu.offsetWidth - 26;
   x = Math.max(12, Math.min(right - menu.offsetWidth, x));
-  const y = Math.max(
-    top,
-    Math.min(bounds.bottom - menu.offsetHeight - 12, anchor.y - 24),
-  );
+  const desiredY =
+    anchor.placement === "above"
+      ? anchor.y - menu.offsetHeight - 10
+      : anchor.y - 24;
+  const y = Math.max(top, Math.min(bottom - menu.offsetHeight, desiredY));
   menu.style.left = x + "px";
   menu.style.top = y + "px";
 }
@@ -658,7 +871,8 @@ function preview() {
   if (!canPlan(p)) return;
   planning = true;
   if (p.direction === "arrival" && !destination)
-    destination = p.stand || sim.freeStands(p)[0]?.id || "";
+    destination =
+      p.stand || sim.freeStands(p, { controlled: true })[0]?.id || "";
   const runway =
     p.direction === "departure"
       ? chooseRunway(p, sim.departureRunwayOptions(p))
@@ -667,7 +881,14 @@ function preview() {
     p.direction === "arrival"
       ? sim.stands.get(destination)?.node
       : runway?.departureHold;
-  map.preview = target ? sim.plan(p, target, waypoints) : [];
+  const taxiPlan =
+    target && p.direction === "arrival"
+      ? sim.taxiPlan(p, target, waypoints)
+      : null;
+  map.preview = target
+    ? taxiPlan?.points || sim.plan(p, target, waypoints)
+    : [];
+  plannedCrossing = taxiPlan?.crossing || null;
   map.waypoints = waypoints;
   if (!map.preview.length)
     toast("No taxi route is available to this destination.");
@@ -896,9 +1117,13 @@ function issue(action) {
   if (action === "preview") {
     if (!menuOpen) select(selected);
     preview();
-    if (map.preview.length >= 2) {
+    if (map.preview.length >= 2 && viewMode !== "3d") {
       closeMenu();
       $("map").focus({ preventScroll: true });
+    } else if (map.preview.length >= 2) {
+      lastMenu = "";
+      render();
+      $("aircraft-menu").focus({ preventScroll: true });
     }
     return;
   }
@@ -1046,7 +1271,7 @@ function menuHTML(p) {
   if (canPlan(p) && arriving) {
     const choices = sim.data.stands
       .map((s) => {
-        const reason = sim.standReason(p, s.id);
+        const reason = sim.standReason(p, s.id, { controlled: true });
         return (
           '<option value="' +
           s.id +
@@ -1071,7 +1296,9 @@ function menuHTML(p) {
       (sim.routeNames(map.preview).join(" → ") || "Apron") +
       " → " +
       (arriving
-        ? "Stand " + destination
+        ? plannedCrossing
+          ? `Hold short ${sim.nodes.get(plannedCrossing.path[0]).ref} / then Stand ${destination}`
+          : "Stand " + destination
         : `${assignedRunway(p).departureHoldLabel} / RWY ${assignedRunway(p).label}`) +
       "</div>";
   content +=
@@ -1111,6 +1338,89 @@ function menuHTML(p) {
       "</div>";
   return content;
 }
+function flightCardMeta(p) {
+  if (["approach", "landing"].includes(p.state)) {
+    const eta = sim.arrivalETA(p);
+    return `RWY ${sim.runwayFor(p).label}${eta === null ? "" : ` · ${formatArrivalETA(eta)}`}`;
+  }
+  if (p.stand) return `Stand ${p.stand}`;
+  if (p.direction === "departure") return `RWY ${sim.runwayFor(p).label}`;
+  if (p.clearance) return p.clearance;
+  return `${Math.round(p.speed * 1.944)} KT`;
+}
+function renderFlightDock() {
+  if (viewMode !== "3d") return;
+  const flights = orderedFlights(sim.planes).filter((p) => p.state !== "done"),
+    signature = flights
+      .map((p) =>
+        [
+          p.id,
+          p.call,
+          p.type,
+          stateText(p),
+          flightCardMeta(p),
+          requestsAction(p),
+          p.id === selected,
+        ].join(":"),
+      )
+      .join("|");
+  if (signature === lastFlightDock) return;
+  lastFlightDock = signature;
+  const groups = new Map();
+  for (const flight of flights) {
+    const status = stateText(flight);
+    if (!groups.has(status)) groups.set(status, []);
+    groups.get(status).push(flight);
+  }
+  const root = document.createElement("div");
+  root.className = "flight-groups";
+  for (const [status, groupedFlights] of groups) {
+    const group = document.createElement("section"),
+      header = document.createElement("header"),
+      title = document.createElement("span"),
+      count = document.createElement("b"),
+      cards = document.createElement("div");
+    group.className = "flight-group";
+    title.textContent = status;
+    count.textContent = String(groupedFlights.length);
+    header.append(title, count);
+    cards.className = "flight-cards";
+    for (const flight of groupedFlights) {
+      const card = document.createElement("button"),
+        call = document.createElement("strong"),
+        type = document.createElement("span"),
+        meta = document.createElement("small");
+      card.type = "button";
+      card.className = "flight-card";
+      card.classList.toggle("request", requestsAction(flight));
+      card.classList.toggle("selected", flight.id === selected);
+      card.style.setProperty("--flight-color", aircraftStatusColor(flight));
+      card.dataset.flightId = String(flight.id);
+      card.setAttribute("aria-label", `${flight.call}, ${status}`);
+      call.textContent = flight.call;
+      type.className = "flight-type";
+      type.textContent = flight.type;
+      meta.textContent = flightCardMeta(flight);
+      card.append(call, type, meta);
+      card.onclick = () => {
+        const bounds = card.getBoundingClientRect();
+        select(flight.id, null, {
+          x: bounds.left + bounds.width / 2,
+          y: bounds.top,
+          placement: "above",
+        });
+      };
+      card.ondblclick = () => towerView?.setSelected(flight.id, true);
+      cards.append(card);
+    }
+    group.append(header, cards);
+    root.append(group);
+  }
+  $("flight-dock-content").replaceChildren(root);
+  requestAnimationFrame(() =>
+    applyOverlayLayout("flight-dock", $("flight-dock")),
+  );
+}
 function render() {
   if (!sim) return;
   const p = selectedPlane();
@@ -1123,6 +1433,7 @@ function render() {
           100,
   };
   towerView?.setSelected(selected);
+  renderFlightDock();
   $("clock").textContent = formatTime(sim.time);
   $("movements").textContent = sim.completed;
   $("score").textContent = sim.score;
@@ -1226,7 +1537,9 @@ function render() {
     (waypoints.length ? waypoints.length + " via / " : "") +
     "Taxi to " +
     (p?.direction === "arrival"
-      ? "stand " + destination
+      ? plannedCrossing
+        ? `${sim.nodes.get(plannedCrossing.path[0]).ref} toward stand ${destination}`
+        : "stand " + destination
       : `${assignedRunway(p).departureHoldLabel} / ${assignedRunway(p).label}`);
   $("route-issue").disabled = map.preview.length < 2;
 }
@@ -1341,7 +1654,7 @@ document.addEventListener("pointerdown", (e) => {
   if (
     menuOpen &&
     !$("aircraft-menu").contains(e.target) &&
-    !$("strips")?.contains(e.target) &&
+    !$("flight-dock").contains(e.target) &&
     e.target !== $("map")
   )
     closeMenu();
@@ -1431,6 +1744,12 @@ document.addEventListener("keydown", (e) => {
 window.addEventListener("resize", () => {
   closeMenu();
   layoutCameraWindows();
+  if (viewMode === "3d")
+    requestAnimationFrame(() => {
+      clampOverlayLayouts();
+      map.fit();
+      if (!$("camera-menu").hidden) positionCameraMenu();
+    });
 });
 for (const event of ["click", "change", "keydown", "pointerup", "wheel"])
   document.addEventListener(event, () => queueMicrotask(saveGame));
@@ -1540,6 +1859,7 @@ async function start() {
       }
     }
     bindViewControls();
+    bindOverlayControls();
     let initialView = window.__initialViewMode;
     if (!initialView)
       initialView = new URL(location.href).searchParams.get("view");

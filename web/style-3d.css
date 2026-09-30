@@ -1,7 +1,3 @@
-:root {
-  --control-map-height: calc((100dvh - var(--header)) / 2);
-}
-
 .view-toggle {
   display: flex;
   flex-shrink: 0;
@@ -37,7 +33,7 @@
   z-index: 1;
   top: var(--header);
   right: 0;
-  bottom: var(--control-map-height);
+  bottom: 0;
   left: 0;
   overflow: hidden;
   background: #111519;
@@ -125,7 +121,7 @@
 
 .tower-tools {
   position: absolute;
-  z-index: 8;
+  z-index: 14;
   top: 14px;
   right: 16px;
   display: flex;
@@ -149,9 +145,19 @@
   color: #17191b;
 }
 
+.tower-tools .tower-tools-handle {
+  width: 24px;
+  cursor: grab;
+  touch-action: none;
+}
+
+.tower-tools .tower-tools-handle:active {
+  cursor: grabbing;
+}
+
 .camera-menu {
   position: absolute;
-  z-index: 9;
+  z-index: 25;
   top: 56px;
   right: 16px;
   width: 220px;
@@ -185,7 +191,7 @@
 
 .camera-windows {
   position: absolute;
-  z-index: 6;
+  z-index: 11;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
@@ -264,75 +270,254 @@
   cursor: grabbing;
 }
 
-.view-resizer {
-  display: none;
-}
-
 body.view-3d .tower-panel {
   display: block !important;
 }
 
 body.view-3d .map-panel {
-  z-index: 3;
-  inset: auto 0 0;
-  height: var(--control-map-height);
-  border-top: 1px solid #5b6268;
-  box-shadow: 0 -10px 32px #0009;
+  z-index: 8;
+  inset: auto auto 16px 16px;
+  width: 340px;
+  height: 240px;
+  min-width: 220px;
+  min-height: 155px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100dvh - var(--header) - 20px);
+  overflow: hidden;
+  resize: both;
+  border: 1px solid #596168;
+  border-radius: 5px;
+  background: #101214ed;
+  box-shadow: 0 8px 28px #0009;
+  pointer-events: auto;
 }
 
-body.view-3d .map-heading {
+body.view-3d .map-panel canvas {
+  cursor: default;
+  pointer-events: none;
+}
+
+body.view-3d .map-heading,
+body.view-3d .map-controls,
+body.view-3d .compass,
+body.view-3d .map-footer,
+body.view-3d .route-banner,
+body.view-3d .loading {
+  display: none !important;
+}
+
+.mini-map-label {
   display: none;
 }
 
-body.view-3d .view-resizer {
-  position: fixed;
-  right: 0;
-  bottom: calc(var(--control-map-height) - 5px);
-  left: 0;
-  z-index: 24;
-  display: grid;
-  height: 10px;
-  place-items: center;
-  cursor: ns-resize;
+body.view-3d .mini-map-label {
+  position: absolute;
+  top: 7px;
+  left: 8px;
+  display: flex;
+  height: 22px;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid #4c555c;
+  border-radius: 2px;
+  background: #111518d9;
+  color: #aeb6bc;
+  font:
+    8px ui-monospace,
+    monospace;
+  cursor: grab;
+  pointer-events: auto;
   touch-action: none;
 }
 
-body.view-3d .view-resizer span {
-  width: 58px;
-  height: 2px;
-  border-radius: 2px;
-  background: #9aa2a8;
-  box-shadow: 0 0 0 4px #161a1dcc;
+body.view-3d .mini-map-label:active {
+  cursor: grabbing;
+}
+
+body.view-3d .mini-map-label svg {
+  width: 12px;
+  height: 12px;
 }
 
 body.view-3d .aircraft-menu {
-  max-height: calc(var(--control-map-height) - 20px);
+  z-index: 25;
+  max-height: calc(100dvh - var(--header) - 36px);
 }
 
-body.view-3d .map-controls {
-  left: 12px;
-  bottom: 48px;
-  flex-direction: row;
+.flight-dock {
+  display: none;
 }
 
-body.view-3d .map-controls button {
-  width: 32px;
-  height: 32px;
-  border-right: 1px solid #383a3f;
-  border-bottom: 0;
+body.view-3d .flight-dock {
+  position: fixed;
+  z-index: 12;
+  right: 14px;
+  bottom: 14px;
+  left: 370px;
+  display: block;
+  max-width: calc(100vw - 16px);
+  overflow: visible;
+  pointer-events: auto;
 }
 
-body.view-3d .compass {
-  right: 16px;
-  bottom: 48px;
+.flight-dock-content {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0 0 3px;
+  scrollbar-width: thin;
 }
 
-body.view-3d .map-footer {
-  padding: 9px 14px;
+.flight-dock-handle {
+  position: absolute;
+  top: -27px;
+  left: 0;
+  display: grid;
+  width: 34px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid #4d565e;
+  border-radius: 4px;
+  background: #171d21df;
+  color: #bfc5c9;
+  cursor: grab;
+  touch-action: none;
 }
 
-body.view-3d .route-banner {
-  bottom: 42px;
+.flight-dock-handle:active {
+  cursor: grabbing;
+}
+
+.flight-dock-handle svg {
+  width: 15px;
+  height: 15px;
+}
+
+.overlay-moving {
+  user-select: none;
+}
+
+.flight-groups {
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  align-items: flex-end;
+  gap: 7px;
+}
+
+.flight-group {
+  flex: 0 0 auto;
+  min-width: 112px;
+  padding: 5px;
+  border: 1px solid #4d5358;
+  border-radius: 5px;
+  background: #14191de6;
+  box-shadow: 0 7px 24px #0008;
+  backdrop-filter: blur(8px);
+}
+
+.flight-group > header {
+  display: flex;
+  height: 18px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 2px 4px;
+  color: #aeb3b7;
+  font:
+    8px ui-monospace,
+    monospace;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.flight-group > header b {
+  color: #7f878d;
+  font-weight: 500;
+}
+
+.flight-cards {
+  display: flex;
+  gap: 4px;
+}
+
+.flight-card {
+  position: relative;
+  display: grid;
+  width: 104px;
+  height: 46px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: 20px 15px;
+  align-items: center;
+  gap: 0 5px;
+  overflow: hidden;
+  padding: 5px 6px 4px 9px;
+  border: 1px solid #4a5055;
+  border-radius: 4px;
+  background: #22282ce8;
+  color: #e7eaec;
+  text-align: left;
+}
+
+.flight-card::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 3px;
+  background: var(--flight-color, #d5d8da);
+  content: "";
+}
+
+.flight-card.selected {
+  border-color: #9cc8ed;
+  background: #2b3740f2;
+}
+
+.flight-card.request::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--yellow);
+  box-shadow: 0 0 7px #f0cf6a;
+  content: "";
+  animation: flight-request 1.8s ease-in-out infinite;
+}
+
+.flight-card strong {
+  overflow: hidden;
+  font:
+    700 10px ui-monospace,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flight-card .flight-type {
+  color: #9da4a9;
+  font:
+    8px ui-monospace,
+    monospace;
+}
+
+.flight-card small {
+  grid-column: 1 / 3;
+  overflow: hidden;
+  color: #b4bac0;
+  font:
+    8px ui-monospace,
+    monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes flight-request {
+  50% {
+    opacity: 0.35;
+  }
 }
 
 @media (max-width: 1250px) {
@@ -366,7 +551,25 @@ body.view-3d .route-banner {
     min-height: 100px;
   }
 
-  body.view-3d .map-footer .legend span:nth-child(n + 3) {
-    display: none;
+  body.view-3d .map-panel {
+    inset: auto auto 82px 10px;
+    width: 220px;
+    height: 155px;
+  }
+
+  body.view-3d .flight-dock {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+  }
+
+  .flight-card {
+    width: 96px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flight-card.request::after {
+    animation: none;
   }
 }

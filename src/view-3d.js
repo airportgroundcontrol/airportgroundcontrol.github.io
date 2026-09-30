@@ -1611,7 +1611,7 @@ export class TowerView {
       this.canvas.classList.remove("dragging");
       if (drag && !drag.moved) {
         const id = this.pick(event.clientX, event.clientY);
-        if (id) this.onSelect(id);
+        if (id) this.onSelect(id, { x: event.clientX, y: event.clientY });
       }
       drag = null;
     });
