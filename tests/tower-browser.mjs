@@ -35,6 +35,7 @@ try {
   assert.equal(await page.locator("#tower-panel [data-action]").count(), 0);
   assert.equal(await page.locator("#tower-panel select").count(), 0);
   assert.equal(await page.locator("#aircraft-panel").count(), 0);
+  assert.equal(await page.locator("#view-toggle").count(), 0);
   assert.equal(await page.locator("#aircraft-menu").isHidden(), true);
   assert.ok((await page.locator(".flight-group").count()) > 0);
   assert.equal(
@@ -391,7 +392,7 @@ try {
 
   const map2DView = { x: 830, y: -460, zoom: 0.42 };
   await page.screenshot({ path: artifact("tower-desktop.png") });
-  await page.locator('[data-view="2d"]').click();
+  await page.evaluate(() => groundControl.setViewMode("2d"));
   assert.equal(await page.locator("body").getAttribute("class"), "");
   assert.equal(await page.locator("#tower-panel").isHidden(), true);
   assert.equal(await page.evaluate(() => groundControl.viewMode), "2d");
@@ -402,7 +403,7 @@ try {
     groundControl.map.camera = camera;
     groundControl.map.draw();
   }, map2DView);
-  await page.locator('[data-view="3d"]').click();
+  await page.evaluate(() => groundControl.setViewMode("3d"));
   assert.equal(await page.evaluate(() => groundControl.viewMode), "3d");
   assert.ok(
     await page.evaluate(() => {
@@ -492,12 +493,12 @@ try {
     }),
     savedViews.overlays,
   );
-  await page.locator('[data-view="2d"]').click();
+  await page.evaluate(() => groundControl.setViewMode("2d"));
   assert.deepEqual(
     await page.evaluate(() => groundControl.map.camera),
     map2DView,
   );
-  await page.locator('[data-view="3d"]').click();
+  await page.evaluate(() => groundControl.setViewMode("3d"));
   assert.ok((await page.evaluate(() => groundControl.map.camera.zoom)) > 0);
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -543,6 +544,21 @@ try {
   await page.screenshot({ path: artifact("tower-mobile.png") });
   await context.close();
 
+  const defaultContext = await browser.newContext({
+    viewport: { width: 1280, height: 800 },
+  });
+  await defaultContext.addInitScript(() =>
+    localStorage.setItem("ground-control:view:EGLC", "3d"),
+  );
+  const defaultView = await defaultContext.newPage();
+  await defaultView.goto(baseURL + "/?airport=EGLC");
+  await defaultView.waitForFunction(() => window.groundControl);
+  assert.equal(await defaultView.evaluate(() => groundControl.viewMode), "2d");
+  assert.equal(await defaultView.locator("#tower-panel").isHidden(), true);
+  assert.equal(await defaultView.locator("#view-toggle").count(), 0);
+  assert.ok((await defaultView.locator("#map").boundingBox()).height > 700);
+  await defaultContext.close();
+
   const london = await browser.newPage({
     viewport: { width: 1280, height: 800 },
   });
@@ -555,7 +571,7 @@ try {
   );
   await london.evaluate(() => groundControl.setPaused(true));
   assert.equal(await london.evaluate(() => groundControl.viewMode), "3d");
-  assert.equal(await london.locator('[data-view="3d"]').isDisabled(), false);
+  assert.equal(await london.locator("#view-toggle").count(), 0);
   const londonScene = await london.evaluate(() => {
     const { towerView: view, sim } = groundControl;
     view.render();
@@ -593,7 +609,7 @@ try {
   assert.equal(londonScene.tower.height, 50);
   assert.equal(londonScene.cameraHeight, 50);
   await london.screenshot({ path: artifact("london-city-tower.png") });
-  await london.locator('[data-view="2d"]').click();
+  await london.evaluate(() => groundControl.setViewMode("2d"));
   await london.screenshot({ path: artifact("london-city-map.png") });
   await london.close();
 

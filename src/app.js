@@ -483,7 +483,7 @@ function bindOverlayControls() {
   });
 }
 
-function setViewMode(next, { remember = true } = {}) {
+function setViewMode(next) {
   if (next === "3d" && !supports3D()) return false;
   if (!map || !sim) return false;
   viewCameras[viewMode] = { ...map.camera };
@@ -507,11 +507,6 @@ function setViewMode(next, { remember = true } = {}) {
     delete miniMap.dataset.moved;
   }
   towerPanel.hidden = next !== "3d";
-  for (const button of document.querySelectorAll("[data-view]")) {
-    const active = button.dataset.view === next;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
-  }
   if (next === "3d" && !towerView) {
     towerView = new TowerView(
       $("tower-scene"),
@@ -547,23 +542,10 @@ function setViewMode(next, { remember = true } = {}) {
   if (next === "3d") url.searchParams.set("view", "3d");
   else url.searchParams.delete("view");
   history.replaceState(null, "", url);
-  if (remember)
-    try {
-      localStorage.setItem(`ground-control:view:${airportData.id}`, next);
-    } catch {}
   return true;
 }
 
-function bindViewControls() {
-  const toggle = $("view-toggle");
-  const button3D = toggle.querySelector('[data-view="3d"]');
-  button3D.disabled = !supports3D();
-  button3D.title = supports3D()
-    ? "3D tower view"
-    : "3D tower view is not available for this airport yet";
-  toggle.querySelectorAll("button").forEach((button) => {
-    button.onclick = () => setViewMode(button.dataset.view);
-  });
+function bindTowerControls() {
   renderCameraMenu();
   $("tower-cameras").onclick = (event) => {
     event.stopPropagation();
@@ -1858,19 +1840,13 @@ async function start() {
         preview();
       }
     }
-    bindViewControls();
+    bindTowerControls();
     bindOverlayControls();
-    let initialView = window.__initialViewMode;
-    if (!initialView)
-      initialView = new URL(location.href).searchParams.get("view");
-    if (!initialView)
-      try {
-        initialView = localStorage.getItem(
-          `ground-control:view:${airportData.id}`,
-        );
-      } catch {}
+    let initialView =
+      window.__initialViewMode ||
+      new URL(location.href).searchParams.get("view");
     if (initialView !== "3d" || !supports3D()) initialView = "2d";
-    setViewMode(initialView, { remember: false });
+    setViewMode(initialView);
     const dataDownload = $("airport-dialog").querySelector("a");
     dataDownload.href = URL.createObjectURL(
       new Blob([JSON.stringify(airportData)], { type: "application/json" }),
